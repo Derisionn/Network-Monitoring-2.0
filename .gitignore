@@ -106,3 +106,7 @@ Thumbs.db
 
 # Custom configuration
 probe_config.json
+
+# Astra DB Secure Connect Bundle and other archives
+*.zip
+secure-connect-*.zip
