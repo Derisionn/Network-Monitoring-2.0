@@ -119,3 +119,7 @@ dist/
 # Probe Agent Data
 *.sqlite
 agent_tasks.sqlite
+
+# Security/Secrets
+bundle_base64.txt
+

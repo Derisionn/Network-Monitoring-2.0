@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     CASSANDRA_CLIENT_ID: Optional[str] = None
     CASSANDRA_CLIENT_SECRET: Optional[str] = None
     CASSANDRA_SECURE_BUNDLE_PATH: Optional[str] = None
+    CASSANDRA_SECURE_BUNDLE_BASE64: Optional[str] = None
     
     # Global Bandwidth Cap (in Megabits per second)
     TOTAL_ILL_BW_MBPS: int = 100

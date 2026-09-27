@@ -17,6 +17,17 @@ def init_cassandra():
     keyspace = settings.CASSANDRA_KEYSPACE
     rep_factor = settings.CASSANDRA_REPLICATION_FACTOR
 
+    if settings.CASSANDRA_SECURE_BUNDLE_BASE64:
+        import base64
+        logger.info("Decoding base64 secure bundle...")
+        bundle_path = settings.CASSANDRA_SECURE_BUNDLE_PATH or "static/secure-connect-network-monitoring-db.zip"
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(bundle_path), exist_ok=True)
+        with open(bundle_path, "wb") as f:
+            f.write(base64.b64decode(settings.CASSANDRA_SECURE_BUNDLE_BASE64))
+        # Override the path so it uses the one we just wrote
+        settings.CASSANDRA_SECURE_BUNDLE_PATH = bundle_path
+
     if settings.CASSANDRA_SECURE_BUNDLE_PATH and settings.CASSANDRA_CLIENT_ID and settings.CASSANDRA_CLIENT_SECRET:
         logger.info(f"Connecting to Astra DB cluster with bundle {settings.CASSANDRA_SECURE_BUNDLE_PATH}")
         cloud_config = {
