@@ -298,18 +298,32 @@ export const ProbeDetails: React.FC = () => {
                   </span>
                 </td>
                 <td style={{ padding: '16px 20px', textAlign: 'right' }}>
-                  <button 
-                    onClick={() => handleDeleteDevice(d.id)}
-                    style={{
-                      background: 'transparent', border: '1px solid #ef4444', color: '#ef4444', 
-                      padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
-                      transition: 'all 0.2s'
-                    }}
-                    onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#ef4444'; e.currentTarget.style.color = 'white'; }}
-                    onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#ef4444'; }}
-                  >
-                    Delete
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                    <button 
+                      onClick={() => navigate(`/devices/${d.id}`)}
+                      style={{
+                        background: 'transparent', border: '1px solid #3b82f6', color: '#60a5fa', 
+                        padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; e.currentTarget.style.color = 'white'; }}
+                      onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#60a5fa'; }}
+                    >
+                      Inspect
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteDevice(d.id)}
+                      style={{
+                        background: 'transparent', border: '1px solid #ef4444', color: '#ef4444', 
+                        padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#ef4444'; e.currentTarget.style.color = 'white'; }}
+                      onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#ef4444'; }}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
