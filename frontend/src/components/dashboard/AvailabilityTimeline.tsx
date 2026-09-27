@@ -80,8 +80,8 @@ export const AvailabilityTimeline: React.FC<AvailabilityTimelineProps> = ({ data
         }}>
           {safeData.map((bucket, index) => {
             let labelStr = bucket.time_label.split(':')[0];
-            if (bucket.timestamp) {
-              const d = new Date(bucket.timestamp);
+            if ((bucket as any).timestamp) {
+              const d = new Date((bucket as any).timestamp);
               labelStr = d.toLocaleTimeString([], { hour: '2-digit', hour12: false });
             }
             return (

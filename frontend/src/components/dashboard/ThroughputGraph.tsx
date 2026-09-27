@@ -89,7 +89,10 @@ export const ThroughputGraph: React.FC<ThroughputGraphProps> = ({
             contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '8px' }}
             itemStyle={{ color: '#f8fafc', fontWeight: 600 }}
             labelStyle={{ color: '#94a3b8', marginBottom: '4px' }}
-            formatter={(value: number) => [`${value.toFixed(2)} Mbps`, 'Throughput']}
+            formatter={(value: any) => {
+              const num = typeof value === 'number' ? value : parseFloat(value || '0');
+              return [`${num.toFixed(2)} Mbps`, 'Throughput'];
+            }}
           />
           
           <Area 
