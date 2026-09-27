@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { Layout } from './components/layout/Layout';
 import { NavItemKey } from './components/layout/Sidebar';
 import { Dashboard } from './pages/Dashboard';
@@ -34,7 +34,6 @@ export const App: React.FC = () => {
   
   const [devices, setDevices] = useState<NetworkDevice[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isBackendOnline, setIsBackendOnline] = useState(true);
 
   const fetchDevices = async () => {
@@ -71,12 +70,12 @@ export const App: React.FC = () => {
           lastSeen: d.last_seen || 'Never',
           snmp_data: d.snmp_data,
           throughput_history: d.throughput_history,
-          monitoring: d.monitoring ? {
-            methods: d.monitoring.methods,
-            intervalSeconds: d.monitoring.interval_seconds,
-            snmpVersion: d.monitoring?.snmp_version,
-            communityString: d.monitoring?.community_string,
-            snmpPort: d.monitoring?.snmp_port,
+          monitoring: d.protocol_config ? {
+            methods: d.protocol_config.methods,
+            intervalSeconds: d.protocol_config.interval_seconds,
+            snmpVersion: d.protocol_config.snmp_version,
+            communityString: d.protocol_config.community_string,
+            snmpPort: d.protocol_config.snmp_port,
           } : undefined
         };
       });
@@ -245,18 +244,10 @@ export const App: React.FC = () => {
         subtitle={subtitle}
         onRefresh={handleRefresh}
         isRefreshing={isRefreshing}
-        onOpenAddDevice={() => setIsAddModalOpen(true)}
         isBackendOnline={isBackendOnline}
       >
         <Routes>
-          <Route path="/" element={
-            <Dashboard
-              devices={devices}
-              onSelectDevice={handleSelectDevice}
-              onNavigateToAlerts={() => navigate('/alerts')}
-              onOpenAddDevice={() => setIsAddModalOpen(true)}
-            />
-          } />
+          <Route path="/" element={<Navigate to="/probes" replace />} />
           
           <Route path="/devices" element={
             <Devices
@@ -291,13 +282,6 @@ export const App: React.FC = () => {
 
         </Routes>
       </Layout>
-
-      {/* Add Device Modal Dialog */}
-      <AddDeviceModal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        onAddDevice={handleAddDevice}
-      />
     </>
   );
 };

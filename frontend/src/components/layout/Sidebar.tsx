@@ -21,10 +21,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   alertCount = 3,
 }) => {
   const primaryNavItems: NavItemConfig[] = [
-    { key: 'dashboard', label: 'Dashboard', symbol: '▣' },
-    { key: 'devices', label: 'Devices', symbol: '◉' },
     { key: 'probes', label: 'Probes & Agents', symbol: '📡' },
-    { key: 'alerts', label: 'Alerts', symbol: '⚠', badge: alertCount },
   ];
 
   const bottomNavItems: NavItemConfig[] = [];

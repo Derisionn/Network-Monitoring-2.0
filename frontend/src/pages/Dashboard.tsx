@@ -8,14 +8,12 @@ interface DashboardProps {
   devices: NetworkDevice[];
   onSelectDevice: (device: NetworkDevice) => void;
   onNavigateToAlerts?: () => void;
-  onOpenAddDevice?: () => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
   devices,
   onSelectDevice,
   onNavigateToAlerts,
-  onOpenAddDevice,
 }) => {
   const totalDevices = devices.length;
   const onlineDevices = devices.filter((d) => d.status === 'online').length;
@@ -93,7 +91,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
       <DeviceTable
         devices={devices}
         onSelectDevice={onSelectDevice}
-        onAddDevice={onOpenAddDevice}
       />
     </div>
   );

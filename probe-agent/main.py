@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 CURRENT_TASKS: List[Dict[str, Any]] = []
 CONFIG_VERSION: str = ""
 DISCOVERED_DEVICES_CACHE = set()
+STATIC_POLLED_DEVICES = set()
 
 import os
 
@@ -217,8 +218,35 @@ def push_results(results: List[Dict[str, Any]], config: Dict[str, Any]):
         headers["Authorization"] = f"Bearer {config['probe_api_key']}"
     
     for res in results:
+        device_id = res["device_id"]
+        
+        # Smart Polling: Push static metadata only on first poll
+        if device_id not in STATIC_POLLED_DEVICES:
+            protocol = res.get("protocol")
+            if protocol in ["SNMP", "WMI", "SSH"]:
+                metrics = res.get("metrics", {})
+                if "System" in metrics:
+                    sys_info = metrics["System"]
+                    static_payload = {}
+                    if "Description" in sys_info:
+                        static_payload["os_description"] = sys_info["Description"]
+                    if "Hostname" in sys_info:
+                        static_payload["system_hostname"] = sys_info["Hostname"]
+                    
+                    if static_payload:
+                        try:
+                            meta_url = f"{config.get('central_server_url', config.get('server_url'))}/api/v1/metadata/devices/{device_id}"
+                            resp = requests.patch(meta_url, json=static_payload, headers=headers, timeout=5)
+                            if resp.status_code in [200, 204]:
+                                STATIC_POLLED_DEVICES.add(device_id)
+                                logger.info(f"Smart Polling: Pushed static metadata for {device_id}")
+                            else:
+                                logger.warning(f"Smart Polling: Backend rejected static metadata for {device_id} ({resp.status_code})")
+                        except Exception as e:
+                            logger.error(f"Smart Polling: Failed to push static metadata for {device_id}: {e}")
+
         payload = {
-            "device_id": res["device_id"],
+            "device_id": device_id,
             "device_ip": res.get("ip_address", "0.0.0.0"),
             "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
         }
