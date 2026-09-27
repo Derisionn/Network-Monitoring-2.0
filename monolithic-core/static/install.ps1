@@ -2,7 +2,7 @@ param (
     [Parameter(Mandatory=$true)]
     [string]$ProbeID,
     
-    [string]$ServerUrl = "http://127.0.0.1:8000"
+    [string]$ServerUrl = "https://network-monitoring-2-0.onrender.com"
 )
 
 $AgentDir = Join-Path $env:USERPROFILE "NetworkMonitorAgent"
