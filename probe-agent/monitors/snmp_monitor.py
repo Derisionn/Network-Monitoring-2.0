@@ -178,3 +178,62 @@ def fetch_snmp_tree(ip_address, config):
         return {"error": str(e)}
 
     return result
+
+def discovery_snmp_scan(ip_address, config):
+    """
+    Runs ONCE per device to fetch static configuration details (Location, OS, MAC)
+    and returns a dictionary of the metadata.
+    """
+    snmp_version = config.get("snmp_version", "v2c")
+    port = config.get("snmp_port", 161)
+    
+    # Use community string if provided, else fallback to public
+    auth_data = CommunityData(config.get("community_string", "public"), mpModel=1)
+    target = UdpTransportTarget((ip_address, port), timeout=2.0, retries=1)
+    
+    metadata = {}
+    
+    try:
+        # Get System Info (sysDescr, sysName, sysLocation)
+        errorIndication, errorStatus, errorIndex, varBinds = next(
+            getCmd(SnmpEngine(), auth_data, target, ContextData(),
+                   ObjectType(ObjectIdentity('1.3.6.1.2.1.1.1.0')),  # sysDescr
+                   ObjectType(ObjectIdentity('1.3.6.1.2.1.1.5.0')),  # sysName
+                   ObjectType(ObjectIdentity('1.3.6.1.2.1.1.6.0')))  # sysLocation
+        )
+
+        if not errorIndication and not errorStatus:
+            for varBind in varBinds:
+                oid_str = str(varBind[0])
+                val_str = str(varBind[1])
+                if "1.3.6.1.2.1.1.1" in oid_str:
+                    metadata["os_description"] = val_str
+                elif "1.3.6.1.2.1.1.5" in oid_str:
+                    metadata["system_hostname"] = val_str
+                elif "1.3.6.1.2.1.1.6" in oid_str:
+                    metadata["location"] = val_str
+
+        # Get first active MAC address from ifPhysAddress (1.3.6.1.2.1.2.2.1.6)
+        for (errorIndication, errorStatus, errorIndex, varBinds) in nextCmd(
+            SnmpEngine(), auth_data, target, ContextData(),
+            ObjectType(ObjectIdentity('1.3.6.1.2.1.2.2.1.6')),
+            lexicographicMode=False
+        ):
+            if errorIndication or errorStatus:
+                break
+            mac_val = varBinds[0][1]
+            if mac_val:
+                # Convert OctetString to MAC format XX:XX:XX:XX:XX:XX
+                try:
+                    mac_str = mac_val.prettyPrint().replace('0x', '')
+                    if len(mac_str) == 12:
+                        formatted_mac = ':'.join(mac_str[i:i+2] for i in range(0, 12, 2))
+                        metadata["mac_address"] = formatted_mac
+                        break # Just take the first valid MAC we find
+                except Exception:
+                    pass
+
+    except Exception as e:
+        logger.error(f"Discovery Scan failed for {ip_address}: {e}")
+        
+    return metadata

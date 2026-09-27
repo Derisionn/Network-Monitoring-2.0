@@ -1,5 +1,6 @@
 from fastapi import FastAPI
-from app.api import ingestion
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from app.api import query_engine
 from app.api import metadata
 from app.config.database import init_cassandra
@@ -13,8 +14,19 @@ MetadataBase.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Network Monitoring - Monolithic Core (Cassandra TSDB)")
 
+# Mount static directory for agent installation scripts
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Adjust in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Register the routers
-app.include_router(ingestion.router, prefix="/api/v1")
 app.include_router(query_engine.router, prefix="/api/v1/query")
 app.include_router(metadata.router, prefix="/api/v1/metadata")
 

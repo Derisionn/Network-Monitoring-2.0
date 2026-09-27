@@ -27,7 +27,7 @@ def write_telemetry_to_tsdb(payload: DeviceTelemetryPayload):
                 status=payload.ping.status,
                 latency_ms=payload.ping.latency_ms,
                 packet_loss=payload.ping.packet_loss_percent,
-                timestamp=now
+                recorded_at=now
             )
             logger.info(f"[TSDB Writer] Saved MonitoringResult (ICMP) for {payload.device_ip}")
 
@@ -41,11 +41,11 @@ def write_telemetry_to_tsdb(payload: DeviceTelemetryPayload):
                 
                 DeviceMetric.create(
                     device_id=payload.device_id, metric_name="interface_in_octets",
-                    sub_entity=iface, metric_value=curr_in, timestamp=now
+                    sub_entity=iface, metric_value=curr_in, recorded_at=now
                 )
                 DeviceMetric.create(
                     device_id=payload.device_id, metric_name="interface_out_octets",
-                    sub_entity=iface, metric_value=curr_out, timestamp=now
+                    sub_entity=iface, metric_value=curr_out, recorded_at=now
                 )
 
                 # B. Fetch previous octets from Cassandra to do the Math
@@ -57,7 +57,7 @@ def write_telemetry_to_tsdb(payload: DeviceTelemetryPayload):
                 
                 time_diff = 0
                 if prev_in_record:
-                    time_diff = (now - prev_in_record.timestamp).total_seconds()
+                    time_diff = (now - prev_in_record.recorded_at).total_seconds()
                     
                 # C. Math logic
                 if time_diff <= 0 or curr_in < prev_in or curr_out < prev_out:
@@ -70,12 +70,12 @@ def write_telemetry_to_tsdb(payload: DeviceTelemetryPayload):
                     utilization = round(((curr_in - prev_in) * 8 / time_diff / TOTAL_ILL_BW_BPS * 100), 2)
 
                 # D. Save Calculated Metrics
-                DeviceMetric.create(device_id=payload.device_id, metric_name="interface_in_mbps", sub_entity=iface, metric_value=download_mbps, timestamp=now)
-                DeviceMetric.create(device_id=payload.device_id, metric_name="interface_out_mbps", sub_entity=iface, metric_value=upload_mbps, timestamp=now)
-                DeviceMetric.create(device_id=payload.device_id, metric_name="interface_utilization_percent", sub_entity=iface, metric_value=utilization, timestamp=now)
+                DeviceMetric.create(device_id=payload.device_id, metric_name="interface_in_mbps", sub_entity=iface, metric_value=download_mbps, recorded_at=now)
+                DeviceMetric.create(device_id=payload.device_id, metric_name="interface_out_mbps", sub_entity=iface, metric_value=upload_mbps, recorded_at=now)
+                DeviceMetric.create(device_id=payload.device_id, metric_name="interface_utilization_percent", sub_entity=iface, metric_value=utilization, recorded_at=now)
                 
                 if metrics.status:
-                    DeviceMetric.create(device_id=payload.device_id, metric_name="interface_status", sub_entity=iface, metric_value=1.0 if metrics.status == "UP" else 0.0, string_value=metrics.status, timestamp=now)
+                    DeviceMetric.create(device_id=payload.device_id, metric_name="interface_status", sub_entity=iface, metric_value=1.0 if metrics.status == "UP" else 0.0, string_value=metrics.status, recorded_at=now)
 
             logger.info(f"[TSDB Writer] Saved Bandwidth Metrics for {payload.device_ip}")
 
@@ -83,11 +83,11 @@ def write_telemetry_to_tsdb(payload: DeviceTelemetryPayload):
         if payload.system:
             sys = payload.system
             if "cpu_usage" in sys:
-                DeviceMetric.create(device_id=payload.device_id, metric_name="cpu_core_utilization", sub_entity="Aggregate", metric_value=float(sys["cpu_usage"]), timestamp=now)
+                DeviceMetric.create(device_id=payload.device_id, metric_name="cpu_core_utilization", sub_entity="Aggregate", metric_value=float(sys["cpu_usage"]), recorded_at=now)
             if "memory_usage" in sys:
-                DeviceMetric.create(device_id=payload.device_id, metric_name="memory_usage_percent", sub_entity="RAM", metric_value=float(sys["memory_usage"]), timestamp=now)
+                DeviceMetric.create(device_id=payload.device_id, metric_name="memory_usage_percent", sub_entity="RAM", metric_value=float(sys["memory_usage"]), recorded_at=now)
             if "disk_usage" in sys:
-                DeviceMetric.create(device_id=payload.device_id, metric_name="storage_usage_percent", sub_entity="Aggregate", metric_value=float(sys["disk_usage"]), timestamp=now)
+                DeviceMetric.create(device_id=payload.device_id, metric_name="storage_usage_percent", sub_entity="Aggregate", metric_value=float(sys["disk_usage"]), recorded_at=now)
                 
             logger.info(f"[TSDB Writer] Saved System Metrics for {payload.device_ip}")
 

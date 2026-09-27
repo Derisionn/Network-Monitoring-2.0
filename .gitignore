@@ -110,3 +110,12 @@ probe_config.json
 # Astra DB Secure Connect Bundle and other archives
 *.zip
 secure-connect-*.zip
+!monolithic-core/static/agent.zip
+
+# Node
+node_modules/
+dist/
+
+# Probe Agent Data
+*.sqlite
+agent_tasks.sqlite

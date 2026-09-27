@@ -11,7 +11,7 @@ class MonitoringResult(Model):
     protocol = columns.Text(partition_key=True) # e.g., 'ICMP', 'SNMP'
     
     # Clustering Key (time)
-    timestamp = columns.DateTime(primary_key=True, clustering_order="DESC", default=datetime.datetime.utcnow)
+    recorded_at = columns.DateTime(primary_key=True, clustering_order="DESC", default=datetime.datetime.utcnow)
     
     id = columns.UUID(default=uuid.uuid4)
     status = columns.Text() # 'UP' or 'DOWN'
@@ -29,7 +29,7 @@ class DeviceMetric(Model):
     
     # Clustering Keys
     sub_entity = columns.Text(primary_key=True) # e.g., 'eth0', 'Core 1', 'RAM'
-    timestamp = columns.DateTime(primary_key=True, clustering_order="DESC", default=datetime.datetime.utcnow)
+    recorded_at = columns.DateTime(primary_key=True, clustering_order="DESC", default=datetime.datetime.utcnow)
     
     id = columns.UUID(default=uuid.uuid4)
     metric_value = columns.Double()

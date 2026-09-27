@@ -10,7 +10,7 @@ import sqlite3
 import random
 
 from monitors.icmp_monitor import ping_device
-from monitors.snmp_monitor import fetch_snmp_tree
+from monitors.snmp_monitor import fetch_snmp_tree, discovery_snmp_scan
 from monitors.ssh_monitor import poll_ssh
 from monitors.wmi_monitor import poll_wmi
 from monitors.tcp_monitor import poll_tcp
@@ -22,9 +22,14 @@ logger = logging.getLogger(__name__)
 # Global state to store the current configuration
 CURRENT_TASKS: List[Dict[str, Any]] = []
 CONFIG_VERSION: str = ""
+DISCOVERED_DEVICES_CACHE = set()
+
+import os
+
 # Lock to prevent race conditions when updating CURRENT_TASKS
 TASKS_LOCK = threading.Lock()
-CONFIG_FILE = "probe_config.json"
+AGENT_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_FILE = os.path.join(AGENT_DIR, "probe_config.json")
 
 MAX_WORKERS = 10
 
@@ -45,6 +50,7 @@ def execute_monitor_task(task: Dict[str, Any]) -> List[Dict[str, Any]]:
             ping_res = ping_device(ip_address)
             results.append({
                 "device_id": device_id,
+                "ip_address": ip_address,
                 "protocol": "ICMP",
                 "status": ping_res.get("status"),
                 "latency_ms": ping_res.get("latency_ms"),
@@ -58,6 +64,7 @@ def execute_monitor_task(task: Dict[str, Any]) -> List[Dict[str, Any]]:
             status = "UP" if "error" not in snmp_res else "DOWN"
             results.append({
                 "device_id": device_id,
+                "ip_address": ip_address,
                 "protocol": "SNMP",
                 "status": status,
                 "metrics": snmp_res if status == "UP" else {},
@@ -70,6 +77,7 @@ def execute_monitor_task(task: Dict[str, Any]) -> List[Dict[str, Any]]:
             status = "UP" if "error" not in ssh_res else "DOWN"
             results.append({
                 "device_id": device_id,
+                "ip_address": ip_address,
                 "protocol": "SSH",
                 "status": status,
                 "metrics": ssh_res if status == "UP" else {},
@@ -82,6 +90,7 @@ def execute_monitor_task(task: Dict[str, Any]) -> List[Dict[str, Any]]:
             status = "UP" if "error" not in wmi_res else "DOWN"
             results.append({
                 "device_id": device_id,
+                "ip_address": ip_address,
                 "protocol": "WMI",
                 "status": status,
                 "metrics": wmi_res if status == "UP" else {},
@@ -94,6 +103,7 @@ def execute_monitor_task(task: Dict[str, Any]) -> List[Dict[str, Any]]:
             status = tcp_res.get("status", "DOWN")
             results.append({
                 "device_id": device_id,
+                "ip_address": ip_address,
                 "protocol": "TCP",
                 "status": status,
                 "latency_ms": tcp_res.get("latency_ms"),
@@ -106,6 +116,7 @@ def execute_monitor_task(task: Dict[str, Any]) -> List[Dict[str, Any]]:
             status = http_res.get("status", "DOWN")
             results.append({
                 "device_id": device_id,
+                "ip_address": ip_address,
                 "protocol": "HTTP",
                 "status": status,
                 "latency_ms": http_res.get("latency_ms"),
@@ -117,7 +128,7 @@ def execute_monitor_task(task: Dict[str, Any]) -> List[Dict[str, Any]]:
         
     return results
 
-DB_FILE = "offline_queue.db"
+DB_FILE = os.path.join(AGENT_DIR, "offline_queue.db")
 
 def init_db():
     with sqlite3.connect(DB_FILE) as conn:
@@ -163,11 +174,13 @@ def flush_offline_queue(config: Dict[str, Any]):
             if not rows:
                 return # Queue is empty
                 
-            url = f"{config['central_server_url']}/api/probe/ingest"
+            url = f"{config.get('central_server_url', config.get('server_url'))}/api/v1/metadata/probe/ingest"
             headers = {
-                "Authorization": f"Bearer {config['probe_api_key']}",
                 "Content-Type": "application/json"
             }
+            
+            if "probe_api_key" in config:
+                headers["Authorization"] = f"Bearer {config['probe_api_key']}"
             
             ids_to_delete = []
             for row_id, payload_str in rows:
@@ -196,26 +209,67 @@ def push_results(results: List[Dict[str, Any]], config: Dict[str, Any]):
     if not results:
         return
         
-    url = f"{config['central_server_url']}/api/probe/ingest"
+    url = f"{config.get('central_server_url', config.get('server_url'))}/api/v1/metadata/probe/ingest"
     headers = {
-        "Authorization": f"Bearer {config['probe_api_key']}",
         "Content-Type": "application/json"
     }
+    if "probe_api_key" in config:
+        headers["Authorization"] = f"Bearer {config['probe_api_key']}"
     
-    payload = {
-        "probe_id": config["probe_id"],
-        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
-        "results": results
-    }
-    
-    try:
-        # Note: in a real environment we would handle gzip compression here
-        resp = requests.post(url, json=payload, headers=headers, timeout=10)
-        resp.raise_for_status()
-        logger.info(f"Pushed {len(results)} metrics to central server successfully.")
-    except Exception as e:
-        logger.error(f"Failed to push metrics to central server: {e}. Saving to offline queue.")
-        save_to_offline_queue(payload)
+    for res in results:
+        payload = {
+            "device_id": res["device_id"],
+            "device_ip": res.get("ip_address", "0.0.0.0"),
+            "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
+        }
+        
+        protocol = res.get("protocol")
+        if protocol in ["ICMP", "TCP", "HTTP"]:
+            payload["ping"] = {
+                "status": res["status"],
+                "latency_ms": res.get("latency_ms"),
+                "packet_loss_percent": res.get("packet_loss")
+            }
+        elif protocol in ["SNMP", "SSH", "WMI"]:
+            metrics = res.get("metrics", {})
+            if "Interfaces" in metrics:
+                payload["interfaces"] = {}
+                for iface_name, iface_data in metrics["Interfaces"].items():
+                    payload["interfaces"][iface_name] = {
+                        "status": iface_data.get("Status", "UP"),
+                        "in_octets": int(iface_data.get("InOctets", iface_data.get("In", 0))),
+                        "out_octets": int(iface_data.get("OutOctets", iface_data.get("Out", 0)))
+                    }
+            
+            # Map System metrics
+            sys_payload = {}
+            if "CPU" in metrics:
+                if "Utilization %" in metrics["CPU"] and metrics["CPU"]["Utilization %"] != "Unknown":
+                    sys_payload["cpu_usage"] = metrics["CPU"]["Utilization %"]
+                elif "Cores" in metrics["CPU"] and len(metrics["CPU"]["Cores"]) > 0:
+                    sys_payload["cpu_usage"] = sum(c.get("usage", 0) for c in metrics["CPU"]["Cores"]) / len(metrics["CPU"]["Cores"])
+            
+            if "Memory" in metrics:
+                sys_payload["memory_usage"] = metrics["Memory"].get("UsedPercent", metrics["Memory"].get("Percent", 0))
+                
+            if "Storage" in metrics:
+                pcts = [d.get("UsedPercent", d.get("Percent", 0)) for k, d in metrics["Storage"].items() if isinstance(d, dict)]
+                if pcts:
+                    sys_payload["disk_usage"] = sum(pcts) / len(pcts)
+                    
+            if sys_payload:
+                payload["system"] = sys_payload
+        
+        logger.info(f"Pushing JSON Payload to Server: {json.dumps(payload, indent=2)}")
+        
+        try:
+            resp = requests.post(url, json=payload, headers=headers, timeout=10)
+            resp.raise_for_status()
+        except Exception as e:
+            logger.error(f"Failed to push metrics for {res.get('ip_address')} to central server: {e}. Saving to offline queue.")
+            save_to_offline_queue(payload)
+            
+    logger.info(f"Pushed {len(results)} metrics to central server successfully.")
 
 def monitoring_loop(config: Dict[str, Any]):
     """
@@ -253,17 +307,47 @@ def monitoring_loop(config: Dict[str, Any]):
         jitter = random.uniform(0, 5) # 0 to 5 seconds of randomness
         time.sleep(base_sleep + jitter)
 
+def run_discovery(task: Dict[str, Any], config: Dict[str, Any]):
+    """Runs the one-time discovery scan and pushes static data to the backend."""
+    device_id = task.get("device_id")
+    ip_address = task.get("ip_address")
+    methods = [m.lower() for m in task.get("methods", [])]
+    
+    # Only run discovery if SNMP is enabled (since that's where we pull MAC/Location/OS)
+    if "snmp" not in methods:
+        return
+        
+    logger.info(f"Running Initial Discovery Scan for {ip_address}...")
+    metadata = discovery_snmp_scan(ip_address, task)
+    
+    if metadata:
+        url = f"{config.get('central_server_url', config.get('server_url'))}/api/v1/metadata/devices/{device_id}"
+        headers = {
+            "Content-Type": "application/json"
+        }
+        if "probe_api_key" in config:
+            headers["Authorization"] = f"Bearer {config['probe_api_key']}"
+        try:
+            resp = requests.patch(url, json=metadata, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                logger.info(f"Successfully pushed discovery metadata for {ip_address}")
+            else:
+                logger.warning(f"Failed to push discovery metadata for {ip_address}: {resp.text}")
+        except Exception as e:
+            logger.error(f"Network error pushing discovery metadata for {ip_address}: {e}")
+
 def long_polling_loop(config: Dict[str, Any]):
     """
     Continuously polls the central server for configuration updates.
     """
-    global CURRENT_TASKS, CONFIG_VERSION
+    global CURRENT_TASKS, CONFIG_VERSION, DISCOVERED_DEVICES_CACHE
     logger.info("Starting long-polling configuration loop...")
-    url = f"{config['central_server_url']}/api/probe/config"
+    url = f"{config.get('central_server_url', config.get('server_url'))}/api/v1/metadata/probe/config"
     headers = {
-        "Authorization": f"Bearer {config['probe_api_key']}",
         "X-Probe-ID": config["probe_id"]
     }
+    if "probe_api_key" in config:
+        headers["Authorization"] = f"Bearer {config['probe_api_key']}"
     
     while True:
         try:
@@ -279,9 +363,18 @@ def long_polling_loop(config: Dict[str, Any]):
                     with TASKS_LOCK:
                         CURRENT_TASKS = data.get("tasks", [])
                         CONFIG_VERSION = new_version
+                        
+                    # Trigger discovery scan for any newly added devices
+                    for task in CURRENT_TASKS:
+                        device_id = task.get("device_id")
+                        if device_id and device_id not in DISCOVERED_DEVICES_CACHE:
+                            DISCOVERED_DEVICES_CACHE.add(device_id)
+                            # Run discovery in a background thread so we don't block polling
+                            threading.Thread(target=run_discovery, args=(task, config), daemon=True).start()
+                            
             elif resp.status_code == 304:
-                # Not modified, just loop again
-                pass
+                # Not modified, fallback to short-polling
+                time.sleep(30)
             else:
                 logger.error(f"Failed to pull config: {resp.status_code} - {resp.text}")
                 time.sleep(10)
