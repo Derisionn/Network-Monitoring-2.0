@@ -56,7 +56,7 @@ export const DeployProbeModal: React.FC<DeployProbeModalProps> = ({
   const winCmd = `Invoke-WebRequest -Uri "${backendUrl}/static/install.ps1" -OutFile "install.ps1"; .\\\\install.ps1 -ProbeID "${probeId}"`;
   const manualJson = `{
   "probe_id": "${probeId}",
-  "backend_url": "${backendUrl}"
+  "central_server_url": "${backendUrl}"
 }`;
 
   return (
@@ -167,12 +167,9 @@ export const DeployProbeModal: React.FC<DeployProbeModalProps> = ({
               )}
               {activeTab === 'standalone' && (
                 <div>
-                  <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0 0 10px 0' }}>1. Download the standalone Windows executable.</p>
-                  <a href={`${backendUrl}/static/agent.exe`} download style={{ display: 'inline-block', padding: '6px 12px', backgroundColor: '#38bdf8', color: '#0f172a', border: 'none', borderRadius: '4px', fontSize: '0.8rem', cursor: 'pointer', marginBottom: '16px', textDecoration: 'none', fontWeight: 600 }}>⬇ Download agent.exe</a>
-                  <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0 0 10px 0' }}>2. Create <code style={{color: '#e2e8f0'}}>probe_config.json</code> in the same folder with the following contents:</p>
-                  <pre style={{ margin: 0, backgroundColor: '#000', padding: '12px', borderRadius: '6px', color: '#38bdf8', fontSize: '0.85rem', overflowX: 'auto' }}>
-                    {manualJson}
-                  </pre>
+                  <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0 0 10px 0' }}>1. Download the pre-configured agent zip file.</p>
+                  <a href={`${backendUrl}/api/v1/metadata/probes/${probeId}/download?backend_url=${encodeURIComponent(backendUrl)}`} download style={{ display: 'inline-block', padding: '6px 12px', backgroundColor: '#38bdf8', color: '#0f172a', border: 'none', borderRadius: '4px', fontSize: '0.8rem', cursor: 'pointer', marginBottom: '16px', textDecoration: 'none', fontWeight: 600 }}>⬇ Download agent-{probeId}.zip</a>
+                  <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0 0 10px 0' }}>2. Extract the zip file (it contains both the executable and your config).</p>
                   <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '10px 0 0 0' }}>3. Double click <code style={{color: '#e2e8f0'}}>agent.exe</code> to run it.</p>
                 </div>
               )}

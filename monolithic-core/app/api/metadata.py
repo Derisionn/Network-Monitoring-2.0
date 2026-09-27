@@ -10,7 +10,10 @@ import logging
 
 # Import our new database service
 from app.database import postgresdata
-
+import io
+import os
+import zipfile
+from fastapi import Response, HTTPException
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -74,6 +77,42 @@ def get_all_probes(db: Session = Depends(get_metadata_db)):
     Returns all registered probe agents and their health status for the frontend dashboard.
     """
     return postgresdata.get_all_probes(db)
+
+@router.get("/probes/{probe_id}/download")
+def download_probe_agent(probe_id: str, backend_url: str, db: Session = Depends(get_metadata_db)):
+    """
+    Dynamically generates a zip file containing the agent executable and a pre-configured probe_config.json
+    """
+    # Verify probe exists (throws 404 if not found)
+    postgresdata.get_probe(db, probe_id)
+    
+    # Path to the static agent.exe
+    agent_exe_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "static", "agent.exe")
+    
+    if not os.path.exists(agent_exe_path):
+        raise HTTPException(status_code=404, detail="agent.exe not found on server")
+        
+    # Generate the JSON config
+    config_dict = {
+        "probe_id": probe_id,
+        "central_server_url": backend_url
+    }
+    config_json = json.dumps(config_dict, indent=4)
+    
+    # Create zip file in memory
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
+        # Add the agent.exe
+        zip_file.write(agent_exe_path, "agent.exe")
+        # Add the config
+        zip_file.writestr("probe_config.json", config_json)
+        
+    zip_buffer.seek(0)
+    
+    headers = {
+        'Content-Disposition': f'attachment; filename="agent-{probe_id}.zip"'
+    }
+    return Response(content=zip_buffer.getvalue(), media_type="application/zip", headers=headers)
 
 @router.post("/probes/{probe_id}/scan")
 def request_probe_scan(probe_id: str, request: ProbeScanRequest, db: Session = Depends(get_metadata_db)):
