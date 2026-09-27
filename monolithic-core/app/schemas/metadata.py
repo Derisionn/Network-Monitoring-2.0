@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 
 class ProbeCreate(BaseModel):
@@ -48,6 +48,7 @@ class DeviceUpdate(BaseModel):
     system_hostname: Optional[str] = None
     location: Optional[str] = None
     mac_address: Optional[str] = None
+    discovered_methods: Optional[List[str]] = None
 
 class ProbeScanRequest(BaseModel):
     subnet: str

@@ -30,7 +30,14 @@ export const Probes: React.FC = () => {
   useEffect(() => {
     fetchProbes();
     const interval = setInterval(fetchProbes, 15000);
-    return () => clearInterval(interval);
+    
+    const handleSync = () => fetchProbes();
+    window.addEventListener('manual-sync', handleSync);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('manual-sync', handleSync);
+    };
   }, []);
 
   const handleDelete = async (probeId: string) => {

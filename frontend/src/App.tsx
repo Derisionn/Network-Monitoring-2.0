@@ -3,13 +3,9 @@ import axios from 'axios';
 import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { Layout } from './components/layout/Layout';
 import { NavItemKey } from './components/layout/Sidebar';
-import { Dashboard } from './pages/Dashboard';
-import { Devices } from './pages/Devices';
 import { DeviceDetails } from './pages/DeviceDetails';
-import { Alerts } from './pages/Alerts';
 import { Probes } from './pages/Probes';
 import { ProbeDetails } from './pages/ProbeDetails';
-import { HealthChart } from './components/dashboard/HealthChart';
 import { AddDeviceModal } from './components/dashboard/AddDeviceModal';
 import { NetworkDevice } from './types/device';
 
@@ -25,7 +21,7 @@ const DeviceDetailsWrapper: React.FC<{ devices: NetworkDevice[], onDelete: (id: 
     return <div style={{ color: '#f8fafc', padding: '20px' }}>Loading device... or not found.</div>;
   }
   
-  return <DeviceDetails device={device} onBack={() => navigate('/devices')} onDelete={onDelete} onRefresh={onRefresh} />;
+  return <DeviceDetails device={device} onBack={() => navigate(`/probes/${device.probe_id}`)} onDelete={onDelete} onRefresh={onRefresh} />;
 };
 
 export const App: React.FC = () => {
@@ -36,52 +32,52 @@ export const App: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isBackendOnline, setIsBackendOnline] = useState(true);
 
-  const fetchDevices = async () => {
+  const fetchActiveDevice = async (deviceId: string) => {
     try {
-      const response = await axios.get('/api/v1/metadata/devices');
-      const backendDevices = response.data.map((d: any) => {
-        let totalBandwidth = 0;
-        if (d.snmp_data?.Interfaces) {
-          Object.values(d.snmp_data.Interfaces).forEach((iface: any) => {
-            const inMbps = parseFloat(iface.In || '0');
-            const outMbps = parseFloat(iface.Out || '0');
-            totalBandwidth += inMbps + outMbps;
-          });
-        }
+      const response = await axios.get(`/api/v1/metadata/devices/${deviceId}`);
+      const d = response.data;
+      
+      let totalBandwidth = 0;
+      if (d.snmp_data?.Interfaces) {
+        Object.values(d.snmp_data.Interfaces).forEach((iface: any) => {
+          const inMbps = parseFloat(iface.In || '0');
+          const outMbps = parseFloat(iface.Out || '0');
+          totalBandwidth += inMbps + outMbps;
+        });
+      }
 
-        return {
-          id: d.id,
-          probe_id: d.probe_id,
-          name: d.name,
-          ip: d.ip_address,
-          mac: d.mac_address || '00:00:00:00:00:00',
-          type: (d.hardware_category || 'server') as any,
-          status: (d.status.toLowerCase() === 'online' ? (d.rolling_packet_loss > 0 ? 'warning' : 'online') : 'offline') as any,
-          location: d.location || 'Unknown',
-          uptime: d.snmp_data?.System?.Uptime || 'Unknown',
-          latencyMs: d.latest_latency_ms || 0,
-          packetLossPercent: d.rolling_packet_loss || 0,
-          availability24hPercent: d.availability_24h_percent,
-          timeline24h: d.timeline_24h,
-          bandwidthUsageMbps: parseFloat(totalBandwidth.toFixed(2)),
-          cpuUsagePercent: d.snmp_data?.CPU?.UsedPercent ?? 0,
-          memoryUsagePercent: d.snmp_data?.Memory?.UsedPercent ?? 0,
-          storageUsagePercent: d.snmp_data?.Storage?.UsedPercent ?? 0,
-          lastSeen: d.last_seen || 'Never',
-          snmp_data: d.snmp_data,
-          throughput_history: d.throughput_history,
-          monitoring: d.protocol_config ? {
-            methods: d.protocol_config.methods,
-            intervalSeconds: d.protocol_config.interval_seconds,
-            snmpVersion: d.protocol_config.snmp_version,
-            communityString: d.protocol_config.community_string,
-            snmpPort: d.protocol_config.snmp_port,
-          } : undefined
-        };
-      });
-      setDevices(backendDevices);
+      const mappedDevice = {
+        id: d.id,
+        probe_id: d.probe_id,
+        name: d.name,
+        ip: d.ip_address,
+        mac: d.mac_address || '00:00:00:00:00:00',
+        type: (d.hardware_category || 'server') as any,
+        status: (d.status.toLowerCase() === 'online' ? (d.rolling_packet_loss > 0 ? 'warning' : 'online') : 'offline') as any,
+        location: d.location || 'Unknown',
+        uptime: d.snmp_data?.System?.Uptime || 'Unknown',
+        latencyMs: d.latest_latency_ms || 0,
+        packetLossPercent: d.rolling_packet_loss || 0,
+        availability24hPercent: d.availability_24h_percent,
+        timeline24h: d.timeline_24h,
+        bandwidthUsageMbps: parseFloat(totalBandwidth.toFixed(2)),
+        cpuUsagePercent: d.snmp_data?.CPU?.UsedPercent ?? 0,
+        memoryUsagePercent: d.snmp_data?.Memory?.UsedPercent ?? 0,
+        storageUsagePercent: d.snmp_data?.Storage?.UsedPercent ?? 0,
+        lastSeen: d.last_seen || 'Never',
+        snmp_data: d.snmp_data,
+        throughput_history: d.throughput_history,
+        monitoring: d.protocol_config ? {
+          methods: d.protocol_config.methods,
+          intervalSeconds: d.protocol_config.interval_seconds,
+          snmpVersion: d.protocol_config.snmp_version,
+          communityString: d.protocol_config.community_string,
+          snmpPort: d.protocol_config.snmp_port,
+        } : undefined
+      };
+      setDevices([mappedDevice]);
     } catch (error) {
-      console.error('Error fetching devices:', error);
+      console.error('Error fetching device:', error);
       setDevices([]);
     }
   };
@@ -96,21 +92,38 @@ export const App: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchDevices();
     checkHealth();
+    
+    if (location.pathname.startsWith('/devices/')) {
+      const id = location.pathname.split('/')[2];
+      if (id) fetchActiveDevice(id);
+    }
+    
     const intervalId = setInterval(() => {
-      fetchDevices();
+      if (location.pathname.startsWith('/devices/')) {
+        const id = location.pathname.split('/')[2];
+        if (id) fetchActiveDevice(id);
+      }
       checkHealth();
     }, 15000);
     return () => clearInterval(intervalId);
-  }, []);
+  }, [location.pathname]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await fetchDevices();
+    
+    // Broadcast to whatever page is currently open to refresh its own data!
+    window.dispatchEvent(new Event('manual-sync'));
+    
+    await checkHealth();
+    if (location.pathname.startsWith('/devices/')) {
+      const id = location.pathname.split('/')[2];
+      if (id) await fetchActiveDevice(id);
+    }
+    
     setTimeout(() => {
       setIsRefreshing(false);
-    }, 400);
+    }, 600);
   };
 
   const handleSelectDevice = (device: NetworkDevice) => {
@@ -148,7 +161,6 @@ export const App: React.FC = () => {
         } : undefined
       };
       await axios.post('/api/v1/metadata/devices', backendPayload);
-      await fetchDevices();
     } catch (error) {
       console.error('Error adding device:', error);
       alert('Failed to add device to the backend API.');
@@ -159,9 +171,8 @@ export const App: React.FC = () => {
     if (window.confirm('Are you sure you want to delete this device?')) {
       try {
         await axios.delete(`/api/v1/metadata/devices/${id}`);
-        await fetchDevices();
         if (location.pathname.startsWith(`/devices/${id}`)) {
-          navigate('/devices');
+          navigate('/probes');
         }
       } catch (error) {
         console.error('Error deleting device:', error);
@@ -184,30 +195,10 @@ export const App: React.FC = () => {
     }
     
     switch (path) {
-      case '/':
-        return {
-          title: '▣ Dashboard Overview',
-          subtitle: 'Live network health, active node telemetry, and system availability',
-        };
-      case '/devices':
-        return {
-          title: '◉ Hardware Inventory',
-          subtitle: 'Detailed inventory of switches, routers, firewalls, and endpoints',
-        };
       case '/probes':
         return {
           title: '📡 Probes & Agents',
           subtitle: 'Manage remote collection agents and deployment scripts',
-        };
-      case '/monitoring':
-        return {
-          title: '◇ Live Telemetry & Monitoring',
-          subtitle: 'Interface traffic curves, bandwidth saturation, and round-trip time latency',
-        };
-      case '/alerts':
-        return {
-          title: '⚠ Active Incidents & Alerts',
-          subtitle: 'Real-time threshold breaches, link drops, and critical notifications',
         };
 
       default:
@@ -227,10 +218,7 @@ export const App: React.FC = () => {
 
   const { title, subtitle } = getHeaderMeta();
 
-  let currentTab: NavItemKey = 'dashboard';
-  if (location.pathname.startsWith('/devices')) currentTab = 'devices';
-  else if (location.pathname.startsWith('/probes')) currentTab = 'probes';
-  else if (location.pathname === '/alerts') currentTab = 'alerts';
+  let currentTab: NavItemKey = 'probes';
 
   return (
     <>
@@ -249,32 +237,10 @@ export const App: React.FC = () => {
         <Routes>
           <Route path="/" element={<Navigate to="/probes" replace />} />
           
-          <Route path="/devices" element={
-            <Devices
-              devices={devices}
-              onSelectDevice={handleSelectDevice}
-              onDeleteDevice={handleDeleteDevice}
-            />
-          } />
-          
-          <Route path="/devices/:id" element={<DeviceDetailsWrapper devices={devices} onDelete={handleDeleteDevice} onRefresh={fetchDevices} />} />
-          
-          <Route path="/monitoring" element={
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              <HealthChart data={[]} />
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-                  gap: '16px',
-                }}
-              >
-                {/* Real telemetry cards will be dynamically rendered here once the API is built */}
-              </div>
-            </div>
-          } />
-          
-          <Route path="/alerts" element={<Alerts />} />
+          <Route path="/devices/:id" element={<DeviceDetailsWrapper devices={devices} onDelete={handleDeleteDevice} onRefresh={() => {
+            const id = location.pathname.split('/')[2];
+            if (id) fetchActiveDevice(id);
+          }} />} />
           
           <Route path="/probes" element={<Probes />} />
           <Route path="/probes/:probeId" element={<ProbeDetails />} />

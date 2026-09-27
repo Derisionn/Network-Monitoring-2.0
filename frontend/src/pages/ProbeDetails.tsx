@@ -101,7 +101,14 @@ export const ProbeDetails: React.FC = () => {
   useEffect(() => {
     fetchDetails();
     const interval = setInterval(fetchDetails, 5000); // Polling every 5s for faster scan feedback
-    return () => clearInterval(interval);
+    
+    const handleSync = () => fetchDetails();
+    window.addEventListener('manual-sync', handleSync);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('manual-sync', handleSync);
+    };
   }, [probeId]);
 
   const handleStartScan = async () => {
@@ -145,6 +152,20 @@ export const ProbeDetails: React.FC = () => {
     setSelectedResults(next);
   };
 
+  const getStatus = (lastHeartbeat: string | null) => {
+    if (!lastHeartbeat) return { text: 'Pending', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.1)' };
+    
+    const dateStr = lastHeartbeat.endsWith('Z') ? lastHeartbeat : `${lastHeartbeat}Z`;
+    const lastTime = new Date(dateStr).getTime();
+    const now = new Date().getTime();
+    const diffSeconds = (now - lastTime) / 1000;
+    
+    if (diffSeconds > 120) {
+      return { text: 'Offline', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)' };
+    }
+    return { text: 'Online', color: '#22c55e', bg: 'rgba(34, 197, 94, 0.1)' };
+  };
+
   if (isLoading) {
     return <div style={{ color: '#94a3b8', padding: '20px' }}>Loading probe details...</div>;
   }
@@ -152,6 +173,8 @@ export const ProbeDetails: React.FC = () => {
   if (!probe) {
     return <div style={{ color: '#ef4444', padding: '20px' }}>Probe not found.</div>;
   }
+
+  const currentStatus = getStatus(probe.last_heartbeat);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -169,8 +192,8 @@ export const ProbeDetails: React.FC = () => {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
         <div style={{ backgroundColor: '#1e293b', padding: '20px', borderRadius: '12px', border: '1px solid #334155' }}>
           <div style={{ color: '#94a3b8', fontSize: '0.75rem', textTransform: 'uppercase', marginBottom: '8px' }}>Status</div>
-          <div style={{ color: probe.is_active ? '#22c55e' : '#ef4444', fontSize: '1.5rem', fontWeight: 700 }}>
-            {probe.is_active ? 'Active' : 'Inactive'}
+          <div style={{ color: currentStatus.color, fontSize: '1.5rem', fontWeight: 700 }}>
+            {currentStatus.text}
           </div>
         </div>
         <div style={{ backgroundColor: '#1e293b', padding: '20px', borderRadius: '12px', border: '1px solid #334155' }}>
@@ -229,15 +252,29 @@ export const ProbeDetails: React.FC = () => {
           </div>
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {probe.last_scan_results.map((res: any) => (
-              <label key={res.ip} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', backgroundColor: '#0f172a', borderRadius: '8px', cursor: 'pointer', border: '1px solid #1e293b' }}>
-                <input type="checkbox" checked={selectedResults.has(res.ip)} onChange={() => toggleSelection(res.ip)} style={{ width: '18px', height: '18px', cursor: 'pointer' }} />
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {probe.last_scan_results.map((res: any) => {
+              const isAlreadyAdded = devices.some((d: any) => d.ip === res.ip);
+              return (
+              <label key={res.ip} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', backgroundColor: '#0f172a', borderRadius: '8px', cursor: isAlreadyAdded ? 'not-allowed' : 'pointer', border: '1px solid #1e293b', opacity: isAlreadyAdded ? 0.6 : 1 }}>
+                <input 
+                  type="checkbox" 
+                  checked={isAlreadyAdded || selectedResults.has(res.ip)} 
+                  disabled={isAlreadyAdded}
+                  onChange={() => !isAlreadyAdded && toggleSelection(res.ip)} 
+                  style={{ width: '18px', height: '18px', cursor: isAlreadyAdded ? 'not-allowed' : 'pointer' }} 
+                />
+                <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
                   <span style={{ color: '#f8fafc', fontWeight: 600 }}>{res.hostname}</span>
                   <span style={{ color: '#94a3b8', fontSize: '0.85rem' }}>{res.ip} • {res.type}</span>
                 </div>
+                {isAlreadyAdded && (
+                  <span style={{ background: 'rgba(34, 197, 94, 0.2)', color: '#22c55e', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700 }}>
+                    Already Added
+                  </span>
+                )}
               </label>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

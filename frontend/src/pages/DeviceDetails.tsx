@@ -138,6 +138,20 @@ export const DeviceDetails: React.FC<DeviceDetailsProps> = ({ device, onBack, on
   }, [device.id]);
 
   const [runningDiagnostic, setRunningDiagnostic] = useState<string | null>(null);
+  const [isDiscovering, setIsDiscovering] = useState(false);
+
+  const handleForceDiscovery = async () => {
+    setIsDiscovering(true);
+    try {
+      await axios.post(`/api/v1/metadata/devices/${device.id}/force-discovery`);
+      alert("Discovery scan queued! The agent will update the metadata shortly.");
+    } catch (err) {
+      console.error("Failed to queue discovery", err);
+      alert("Failed to queue discovery scan.");
+    } finally {
+      setIsDiscovering(false);
+    }
+  };
 
   const handleRunDiagnostic = async (protocol: string) => {
     setRunningDiagnostic(protocol);
@@ -179,6 +193,23 @@ export const DeviceDetails: React.FC<DeviceDetailsProps> = ({ device, onBack, on
         </button>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button
+            onClick={handleForceDiscovery}
+            disabled={isDiscovering}
+            style={{
+              background: 'rgba(56, 189, 248, 0.1)',
+              color: '#38bdf8',
+              border: '1px solid #38bdf8',
+              padding: '8px 16px',
+              borderRadius: '8px',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+              cursor: isDiscovering ? 'not-allowed' : 'pointer',
+              opacity: isDiscovering ? 0.7 : 1,
+            }}
+          >
+            {isDiscovering ? 'Queuing...' : 'Re-run Discovery'}
+          </button>
           {onDelete && (
             <button
               onClick={() => onDelete(device.id)}

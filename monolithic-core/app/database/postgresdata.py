@@ -43,9 +43,31 @@ def update_device_metadata(db: Session, device_id: str, updates: DeviceUpdate) -
     if updates.location is not None: db_device.location = updates.location
     if updates.mac_address is not None: db_device.mac_address = updates.mac_address
     
+    if updates.discovered_methods is not None:
+        # Merge the auto-discovered methods into the protocol_config JSON
+        if db_device.protocol_config is None:
+            db_device.protocol_config = {}
+        
+        existing_methods = db_device.protocol_config.get("methods", [])
+        # Combine existing and new, keeping unique
+        merged_methods = list(set(existing_methods + updates.discovered_methods))
+        db_device.protocol_config["methods"] = merged_methods
+    
+    # Automatically clear the sticky note once metadata is updated!
+    db_device.pending_discovery = False
+    
     db.commit()
     db.refresh(db_device)
     return db_device
+
+def force_device_discovery(db: Session, device_id: str):
+    db_device = db.query(Device).filter(Device.id == device_id, Device.is_deleted == False).first()
+    if not db_device:
+        raise HTTPException(status_code=404, detail="Device not found")
+        
+    db_device.pending_discovery = True
+    db.commit()
+    return {"message": "Discovery scan queued"}
 
 def delete_device(db: Session, device_id: str):
     db_device = db.query(Device).filter(Device.id == device_id, Device.is_deleted == False).first()
@@ -55,6 +77,12 @@ def delete_device(db: Session, device_id: str):
     db.delete(db_device)
     db.commit()
     return {"message": "Device deleted successfully"}
+
+def get_device(db: Session, device_id: str):
+    device = db.query(Device).filter(Device.id == device_id, Device.is_deleted == False).first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    return device
 
 def get_all_probes(db: Session):
     return db.query(Probe).all()

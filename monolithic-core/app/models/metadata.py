@@ -44,6 +44,9 @@ class Device(Base):
     os_description = Column(String, nullable=True)
     system_hostname = Column(String, nullable=True)
     
+    # Flag to trigger a manual deep discovery scan by the probe agent
+    pending_discovery = Column(Boolean, default=False)
+    
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
     is_deleted = Column(Boolean, default=False, nullable=False)

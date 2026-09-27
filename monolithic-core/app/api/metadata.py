@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, Header, BackgroundTasks
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
 from app.config.metadata_db import get_metadata_db
 from app.schemas.metadata import DeviceCreate, DeviceResponse, DeviceUpdate, ProbeResponse, ProbeCreate, ProbeScanRequest, ProbeScanResultPayload
-from app.schemas.telemetry import DeviceTelemetryPayload
+
 from typing import List
 import hashlib
 import json
@@ -10,7 +10,7 @@ import logging
 
 # Import our new database service
 from app.database import postgresdata
-from app.services.tsdb_writer import write_telemetry_to_tsdb
+
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -24,12 +24,12 @@ def register_device(device: DeviceCreate, db: Session = Depends(get_metadata_db)
     """
     return postgresdata.create_device(db, device)
 
-@router.get("/devices", response_model=List[DeviceResponse])
-def get_devices(db: Session = Depends(get_metadata_db)):
+@router.get("/devices/{device_id}", response_model=DeviceResponse)
+def get_device(device_id: str, db: Session = Depends(get_metadata_db)):
     """
-    Retrieves all non-deleted devices from the database layer.
+    Retrieves a single non-deleted device from the database layer.
     """
-    return postgresdata.get_all_devices(db)
+    return postgresdata.get_device(db, device_id)
 
 @router.patch("/devices/{device_id}", response_model=DeviceResponse)
 def update_device(device_id: str, updates: DeviceUpdate, db: Session = Depends(get_metadata_db)):
@@ -44,6 +44,13 @@ def delete_device(device_id: str, db: Session = Depends(get_metadata_db)):
     Soft deletes an existing device.
     """
     return postgresdata.delete_device(db, device_id)
+
+@router.post("/devices/{device_id}/force-discovery")
+def force_discovery(device_id: str, db: Session = Depends(get_metadata_db)):
+    """
+    Triggers a manual deep discovery scan for a specific device.
+    """
+    return postgresdata.force_device_discovery(db, device_id)
 
 # --- PROBE APIS ---
 
@@ -120,21 +127,27 @@ def get_probe_config(
         if d.protocol_config and "methods" in d.protocol_config:
             methods = d.protocol_config["methods"]
             
-        tasks.append({
+        task_dict = {
             "device_id": d.id,
             "ip_address": d.ip_address,
             "methods": methods,
             "snmp_version": d.protocol_config.get("snmp_version", "v2c") if d.protocol_config else "v2c",
             "community_string": d.protocol_config.get("community_string", "public") if d.protocol_config else "public"
-        })
+        }
+        
+        if getattr(d, 'pending_discovery', False):
+            task_dict["force_discovery"] = True
+            
+        tasks.append(task_dict)
         
     # Create a hash of the current task list to act as a version
     config_str = json.dumps(tasks, sort_keys=True)
     new_version = hashlib.md5(config_str.encode()).hexdigest()
     
-    if new_version == current_version:
-        from fastapi import Response
-        return Response(status_code=304)
+    # Bandwidth saver temporarily disabled:
+    # if new_version == current_version:
+    #     from fastapi import Response
+    #     return Response(status_code=304)
     
     return {
         "config_version": new_version,
@@ -142,19 +155,5 @@ def get_probe_config(
         "pending_scan_subnet": probe.pending_scan_subnet
     }
 
-@router.post("/probe/ingest")
-async def ingest_telemetry(payload: DeviceTelemetryPayload, background_tasks: BackgroundTasks):
-    """
-    Ingestion Endpoint: Receives telemetry data from Distributed Probe Agents.
-    """
-    logger.info(f"--- Received telemetry from {payload.device_ip} (ID: {payload.device_id}) ---")
-    
-    # Instantly offload to background task to write to Cassandra
-    background_tasks.add_task(write_telemetry_to_tsdb, payload)
 
-    return {
-        "status": "success", 
-        "message": "Telemetry queued for TSDB writing",
-        "device_ip": payload.device_ip
-    }
 
