@@ -15,14 +15,10 @@ if (Test-Path $AgentDir) {
     New-Item -ItemType Directory -Path $AgentDir -Force | Out-Null
 }
 
-$ZipUrl = "$ServerUrl/static/agent.zip"
-$ZipPath = Join-Path $AgentDir "agent.zip"
-Write-Host "Downloading fat agent package..." -ForegroundColor Cyan
-Invoke-WebRequest -Uri $ZipUrl -OutFile $ZipPath
-
-Write-Host "Extracting agent package..." -ForegroundColor Cyan
-Expand-Archive -Path $ZipPath -DestinationPath $AgentDir -Force
-Remove-Item $ZipPath
+$ExeUrl = "$ServerUrl/static/agent.exe"
+$ExePath = Join-Path $AgentDir "agent.exe"
+Write-Host "Downloading standalone agent executable..." -ForegroundColor Cyan
+Invoke-WebRequest -Uri $ExeUrl -OutFile $ExePath
 
 $ConfigPath = Join-Path $AgentDir "probe_config.json"
 Write-Host "Saving configuration for Probe ID: $ProbeID..." -ForegroundColor Cyan
@@ -33,11 +29,6 @@ $Config = @{
 }
 $Config | ConvertTo-Json | Set-Content $ConfigPath
 
-Write-Host "Installing dependencies..." -ForegroundColor Cyan
-Push-Location $AgentDir
-pip install -r requirements.txt
-Pop-Location
-
 Write-Host ""
 Write-Host "==================================================" -ForegroundColor Green
 Write-Host "✅ Network Monitor Fat Agent Installed Successfully!" -ForegroundColor Green
@@ -45,7 +36,7 @@ Write-Host "==================================================" -ForegroundColor
 Write-Host "Probe ID: $ProbeID"
 Write-Host "Installed at: $AgentDir"
 Write-Host ""
-Write-Host "To start the agent, run the following command:" -ForegroundColor Cyan
+Write-Host "Start the agent by running:" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "python `"$AgentDir\main.py`"" -ForegroundColor White
+Write-Host "& `"$AgentDir\agent.exe`"" -ForegroundColor White
 Write-Host "==================================================" -ForegroundColor Green

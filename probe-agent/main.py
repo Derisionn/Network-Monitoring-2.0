@@ -10,7 +10,15 @@ from core.executor import monitoring_loop
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-AGENT_DIR = os.path.dirname(os.path.abspath(__file__))
+import sys
+
+if getattr(sys, 'frozen', False):
+    # Running as compiled executable
+    AGENT_DIR = os.path.dirname(sys.executable)
+else:
+    # Running as python script
+    AGENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 CONFIG_FILE = os.path.join(AGENT_DIR, "probe_config.json")
 
 def load_config() -> Dict[str, Any]:

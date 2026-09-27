@@ -17,7 +17,7 @@ export const DeployProbeModal: React.FC<DeployProbeModalProps> = ({
   const [probeName, setProbeName] = useState('');
   const [location, setLocation] = useState('');
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'linux' | 'windows' | 'manual'>('linux');
+  const [activeTab, setActiveTab] = useState<'linux' | 'windows' | 'standalone' | 'manual'>('linux');
 
   if (!isOpen) return null;
 
@@ -125,14 +125,14 @@ export const DeployProbeModal: React.FC<DeployProbeModalProps> = ({
 
             {/* Tabs */}
             <div style={{ display: 'flex', borderBottom: '1px solid #1e293b', gap: '20px' }}>
-              {['linux', 'windows', 'manual'].map((tab) => (
+              {['linux', 'windows', 'standalone', 'manual'].map((tab) => (
                 <div key={tab} onClick={() => setActiveTab(tab as any)} style={{
                   padding: '10px 0', cursor: 'pointer', textTransform: 'capitalize',
                   color: activeTab === tab ? '#38bdf8' : '#64748b',
                   borderBottom: activeTab === tab ? '2px solid #38bdf8' : '2px solid transparent',
                   fontWeight: activeTab === tab ? 600 : 400
                 }}>
-                  {tab === 'manual' ? 'Manual Setup' : tab}
+                  {tab === 'manual' ? 'Manual Setup' : tab === 'standalone' ? 'Windows (.exe)' : tab}
                 </div>
               ))}
             </div>
@@ -163,6 +163,17 @@ export const DeployProbeModal: React.FC<DeployProbeModalProps> = ({
                       python "%USERPROFILE%\NetworkMonitorAgent\agent.py"
                     </code>
                   </div>
+                </div>
+              )}
+              {activeTab === 'standalone' && (
+                <div>
+                  <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0 0 10px 0' }}>1. Download the standalone Windows executable.</p>
+                  <a href={`${backendUrl}/static/agent.exe`} download style={{ display: 'inline-block', padding: '6px 12px', backgroundColor: '#38bdf8', color: '#0f172a', border: 'none', borderRadius: '4px', fontSize: '0.8rem', cursor: 'pointer', marginBottom: '16px', textDecoration: 'none', fontWeight: 600 }}>⬇ Download agent.exe</a>
+                  <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '0 0 10px 0' }}>2. Create <code style={{color: '#e2e8f0'}}>probe_config.json</code> in the same folder with the following contents:</p>
+                  <pre style={{ margin: 0, backgroundColor: '#000', padding: '12px', borderRadius: '6px', color: '#38bdf8', fontSize: '0.85rem', overflowX: 'auto' }}>
+                    {manualJson}
+                  </pre>
+                  <p style={{ color: '#94a3b8', fontSize: '0.85rem', margin: '10px 0 0 0' }}>3. Double click <code style={{color: '#e2e8f0'}}>agent.exe</code> to run it.</p>
                 </div>
               )}
               {activeTab === 'manual' && (
