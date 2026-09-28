@@ -18,11 +18,14 @@ def generate_agent_package(probe_id: str, backend_url: str) -> io.BytesIO:
 }}"""
         zip_file.writestr("probe_config.json", config_content)
         
-        # Optionally, include the agent executable if it exists in the build directory
-        # Adjust path as necessary based on your project structure
-        agent_exe_path = os.path.join(os.path.dirname(__file__), "../../../probe-agent/dist/agent.exe")
-        if os.path.exists(agent_exe_path):
-            zip_file.write(agent_exe_path, "agent.exe")
+        # Check for agent executable in static folder (for deployment) or probe-agent folder (local dev)
+        static_agent_path = os.path.join(os.path.dirname(__file__), "../../static/agent.exe")
+        dev_agent_path = os.path.join(os.path.dirname(__file__), "../../../probe-agent/dist/agent.exe")
+        
+        if os.path.exists(static_agent_path):
+            zip_file.write(static_agent_path, "agent.exe")
+        elif os.path.exists(dev_agent_path):
+            zip_file.write(dev_agent_path, "agent.exe")
             
     zip_buffer.seek(0)
     return zip_buffer
