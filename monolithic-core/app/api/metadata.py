@@ -10,6 +10,7 @@ import logging
 
 # Import our new database service
 from app.database import postgresdata
+from app.services import agent_service
 import io
 import os
 import zipfile
@@ -86,28 +87,8 @@ def download_probe_agent(probe_id: str, backend_url: str, db: Session = Depends(
     # Verify probe exists (throws 404 if not found)
     postgresdata.get_probe(db, probe_id)
     
-    # Path to the static agent.exe
-    agent_exe_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "static", "agent.exe")
-    
-    if not os.path.exists(agent_exe_path):
-        raise HTTPException(status_code=404, detail="agent.exe not found on server")
-        
-    # Generate the JSON config
-    config_dict = {
-        "probe_id": probe_id,
-        "central_server_url": backend_url
-    }
-    config_json = json.dumps(config_dict, indent=4)
-    
-    # Create zip file in memory
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
-        # Add the agent.exe
-        zip_file.write(agent_exe_path, "agent.exe")
-        # Add the config
-        zip_file.writestr("probe_config.json", config_json)
-        
-    zip_buffer.seek(0)
+    # Delegate zip generation to service layer
+    zip_buffer = agent_service.generate_agent_package(probe_id, backend_url)
     
     headers = {
         'Content-Disposition': f'attachment; filename="agent-{probe_id}.zip"'
