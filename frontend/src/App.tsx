@@ -34,8 +34,13 @@ export const App: React.FC = () => {
 
   const fetchActiveDevice = async (deviceId: string) => {
     try {
-      const response = await axios.get(`/api/v1/metadata/devices/${deviceId}`);
-      const d = response.data;
+      const [metaResponse, availabilityResponse] = await Promise.all([
+        axios.get(`/api/v1/metadata/devices/${deviceId}`),
+        axios.get(`/api/v1/query/devices/${deviceId}/availability`).catch(() => ({ data: { availability_24h_percent: null, timeline_24h: [] } }))
+      ]);
+      
+      const d = metaResponse.data;
+      const avail = availabilityResponse.data;
       
       let totalBandwidth = 0;
       if (d.snmp_data?.Interfaces) {
@@ -58,8 +63,8 @@ export const App: React.FC = () => {
         uptime: d.snmp_data?.System?.Uptime || 'Unknown',
         latencyMs: d.latest_latency_ms || 0,
         packetLossPercent: d.rolling_packet_loss || 0,
-        availability24hPercent: d.availability_24h_percent,
-        timeline24h: d.timeline_24h,
+        availability24hPercent: avail.availability_24h_percent,
+        timeline24h: avail.timeline_24h,
         bandwidthUsageMbps: parseFloat(totalBandwidth.toFixed(2)),
         cpuUsagePercent: d.snmp_data?.CPU?.UsedPercent ?? 0,
         memoryUsagePercent: d.snmp_data?.Memory?.UsedPercent ?? 0,
@@ -73,7 +78,8 @@ export const App: React.FC = () => {
           snmpVersion: d.protocol_config.snmp_version,
           communityString: d.protocol_config.community_string,
           snmpPort: d.protocol_config.snmp_port,
-        } : undefined
+        } : undefined,
+        supported_protocols: d.supported_protocols
       };
       setDevices([mappedDevice]);
     } catch (error) {

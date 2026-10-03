@@ -100,13 +100,17 @@ def push_results(results: List[Dict[str, Any]], config: Dict[str, Any]):
         elif protocol in ["SNMP", "SSH", "WMI"]:
             metrics = res.get("metrics", {})
             if "Interfaces" in metrics:
-                payload["interfaces"] = {}
-                for iface_name, iface_data in metrics["Interfaces"].items():
-                    payload["interfaces"][iface_name] = {
-                        "status": iface_data.get("Status", "UP"),
-                        "in_octets": int(iface_data.get("InOctets", iface_data.get("In", 0))),
-                        "out_octets": int(iface_data.get("OutOctets", iface_data.get("Out", 0)))
-                    }
+                from core.normalization import clean_and_filter_interfaces
+                filtered_interfaces = clean_and_filter_interfaces(metrics["Interfaces"])
+                
+                if filtered_interfaces:
+                    payload["interfaces"] = {}
+                    for iface_name, iface_data in filtered_interfaces.items():
+                        payload["interfaces"][iface_name] = {
+                            "status": iface_data.get("Status", "UP"),
+                            "in_octets": int(iface_data.get("InOctets", iface_data.get("In", 0))),
+                            "out_octets": int(iface_data.get("OutOctets", iface_data.get("Out", 0)))
+                        }
             
             sys_payload = {}
             if "CPU" in metrics:

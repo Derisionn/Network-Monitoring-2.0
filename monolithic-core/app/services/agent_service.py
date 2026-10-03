@@ -13,19 +13,17 @@ def generate_agent_package(probe_id: str, backend_url: str) -> io.BytesIO:
         # Create a pre-configured config file
         config_content = f"""{{
   "server_url": "{backend_url}",
+  "probe_id": "{probe_id}",
   "probe_api_key": "{probe_id}",
   "poll_interval_seconds": 60
 }}"""
         zip_file.writestr("probe_config.json", config_content)
         
-        # Check for agent executable in static folder (for deployment) or probe-agent folder (local dev)
+        # Check for agent executable in static folder 
         static_agent_path = os.path.join(os.path.dirname(__file__), "../../static/agent.exe")
-        dev_agent_path = os.path.join(os.path.dirname(__file__), "../../../probe-agent/dist/agent.exe")
         
         if os.path.exists(static_agent_path):
             zip_file.write(static_agent_path, "agent.exe")
-        elif os.path.exists(dev_agent_path):
-            zip_file.write(dev_agent_path, "agent.exe")
             
     zip_buffer.seek(0)
     return zip_buffer

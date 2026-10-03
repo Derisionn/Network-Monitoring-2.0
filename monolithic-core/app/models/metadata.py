@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, DateTime, Boolean, JSON, UniqueConstraint, ForeignKey
+from sqlalchemy import Column, String, Integer, DateTime, Boolean, JSON, UniqueConstraint, ForeignKey, Index
 from app.config.metadata_db import Base
 import datetime
 import uuid
@@ -20,9 +20,8 @@ class Device(Base):
     __tablename__ = "devices"
     
     __table_args__ = (
-        UniqueConstraint('ip_address', 'is_deleted', name='uix_ip_is_deleted'),
+        Index('uix_active_ip', 'ip_address', unique=True, postgresql_where=(Column('is_deleted') == False)),
     )
-
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     probe_id = Column(String, ForeignKey("probes.id"), nullable=False, default="default-agent", index=True)
     name = Column(String, nullable=False, index=True)
@@ -39,6 +38,9 @@ class Device(Base):
     
     # JSON field for storing SSH credentials, ICMP polling intervals, etc.
     protocol_config = Column(JSON, nullable=True)
+    
+    # List of protocols detected by deep discovery scan (e.g. ["icmp", "snmp", "wmi"])
+    supported_protocols = Column(JSON, nullable=True)
     
     # Cached static SNMP info (so frontend doesn't need to query Cassandra for static labels)
     os_description = Column(String, nullable=True)

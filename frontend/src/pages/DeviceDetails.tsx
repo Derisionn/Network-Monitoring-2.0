@@ -5,6 +5,7 @@ import { StatusBadge } from '../components/common/StatusBadge';
 import { AvailabilityTimeline } from '../components/dashboard/AvailabilityTimeline';
 import { CpuCoresGraph } from '../components/dashboard/CpuCoresGraph';
 import { ThroughputGraph } from '../components/dashboard/ThroughputGraph';
+import EditProtocolsModal from '../components/dashboard/EditProtocolsModal';
 
 const DonutChart: React.FC<{ value: number; label: string; color: string }> = ({ value, label, color }) => {
   const radius = 40;
@@ -43,23 +44,32 @@ const DonutChart: React.FC<{ value: number; label: string; color: string }> = ({
 
 const GaugeWidget: React.FC<{ value: number; label: string; color: string; format?: string }> = ({ value, label, color, format = '%' }) => {
   const radius = 50;
-  const strokeWidth = 16;
+  const strokeWidth = 12;
   const normalizedRadius = radius - strokeWidth / 2;
   const circumference = normalizedRadius * Math.PI;
   
   const clampedValue = Math.min(Math.max(value, 0), 100);
   const strokeDashoffset = circumference - (clampedValue / 100) * circumference;
-  const angle = (clampedValue / 100) * 180 - 90;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '140px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', padding: '24px 20px', background: '#0f172a', borderRadius: '16px', border: '1px solid #1e293b', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
       <div style={{ position: 'relative', width: '100px', height: '55px', overflow: 'hidden' }}>
         <svg width="100" height="100" style={{ position: 'absolute', top: 0, left: 0 }}>
+          <defs>
+            <filter id={`glow-${label.replace(/\\s+/g, '')}`}>
+              <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+              <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+          </defs>
           <path
             d={`M ${strokeWidth/2} ${radius} A ${normalizedRadius} ${normalizedRadius} 0 0 1 ${100 - strokeWidth/2} ${radius}`}
             fill="none"
             stroke="#1e293b"
             strokeWidth={strokeWidth}
+            strokeLinecap="round"
           />
           <path
             d={`M ${strokeWidth/2} ${radius} A ${normalizedRadius} ${normalizedRadius} 0 0 1 ${100 - strokeWidth/2} ${radius}`}
@@ -68,22 +78,17 @@ const GaugeWidget: React.FC<{ value: number; label: string; color: string; forma
             strokeWidth={strokeWidth}
             strokeDasharray={circumference}
             strokeDashoffset={strokeDashoffset}
-            style={{ transition: 'stroke-dashoffset 0.5s ease-in-out' }}
+            strokeLinecap="round"
+            filter={`url(#glow-${label.replace(/\\s+/g, '')})`}
+            style={{ transition: 'stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1)' }}
           />
-          <line x1="50" y1="5" x2="50" y2="15" stroke="#334155" strokeWidth="1" />
-          <polygon 
-            points="46,50 54,50 50,15" 
-            fill="#334155" 
-            style={{ transform: `rotate(${angle}deg)`, transformOrigin: '50px 50px', transition: 'transform 0.5s ease-in-out' }} 
-          />
-          <circle cx="50" cy="50" r="8" fill="#f8fafc" stroke="#cbd5e1" strokeWidth="2" />
         </svg>
       </div>
       <div style={{ textAlign: 'center', marginTop: '12px' }}>
-        <div style={{ fontSize: '1.6rem', fontWeight: 600, color: '#f8fafc', lineHeight: 1 }}>
-          {value}<span style={{ fontSize: '1rem', fontWeight: 400 }}>{format}</span>
+        <div style={{ fontSize: '1.6rem', fontWeight: 700, color: '#f8fafc', lineHeight: 1 }}>
+          {value}<span style={{ fontSize: '1rem', fontWeight: 500, color: '#94a3b8', marginLeft: '4px' }}>{format}</span>
         </div>
-        <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginTop: '6px' }}>
+        <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginTop: '8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           {label}
         </div>
       </div>
@@ -91,16 +96,19 @@ const GaugeWidget: React.FC<{ value: number; label: string; color: string; forma
   );
 };
 
-const ValueWidget: React.FC<{ value: string | number; label: string; unit: string }> = ({ value, label, unit }) => (
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', width: '140px', height: '105px' }}>
-    <div style={{ textAlign: 'center' }}>
-      <div style={{ fontSize: '2.5rem', fontWeight: 400, color: '#f8fafc', lineHeight: 1 }}>
-        {value}
+const LatencyWidget: React.FC<{ value: number; label: string; unit: string; color: string }> = ({ value, label, unit, color }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', padding: '24px 20px', background: '#0f172a', borderRadius: '16px', border: '1px solid #1e293b', minHeight: '135px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
+    <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: '4px' }}>
+        <div style={{ fontSize: '2.5rem', fontWeight: 700, color: '#f8fafc', lineHeight: 1, textShadow: `0 0 15px ${color}50` }}>
+          {value === 0 ? '<1' : value}
+        </div>
+        <div style={{ fontSize: '1.2rem', color: '#cbd5e1', fontWeight: 500 }}>
+          {unit}
+        </div>
       </div>
-      <div style={{ fontSize: '1rem', color: '#cbd5e1', marginTop: '8px' }}>
-        {unit}
-      </div>
-      <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginTop: '6px' }}>
+      <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginTop: '16px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: color, boxShadow: `0 0 8px ${color}` }}></div>
         {label}
       </div>
     </div>
@@ -119,26 +127,52 @@ export const DeviceDetails: React.FC<DeviceDetailsProps> = ({ device, onBack, on
 
   const fetchLogs = async () => {
     try {
-      const response = await axios.get(`/api/devices/${device.id}/logs`);
-      const parsedLogs = response.data.logs.map((log: any) => {
-        if (typeof log === 'string') return log; // Backwards compatibility for old manual ping logs
-        const localTime = new Date(log.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        return `[${localTime}] ${log.message}`;
-      });
-      setPingLog(parsedLogs);
+      const response = await axios.get(`/api/v1/metadata/devices/${device.id}/diagnostic-logs`);
+      const rawLogs = response.data.logs || [];
+      setPingLog(rawLogs);
     } catch (err) {
       console.error("Failed to fetch logs", err);
     }
   };
 
   useEffect(() => {
-    // fetchLogs();
-    // const interval = setInterval(fetchLogs, 15000);
-    // return () => clearInterval(interval);
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 3000);
+    return () => clearInterval(interval);
   }, [device.id]);
 
   const [runningDiagnostic, setRunningDiagnostic] = useState<string | null>(null);
   const [isDiscovering, setIsDiscovering] = useState(false);
+  const [isEditProtocolsOpen, setIsEditProtocolsOpen] = useState(false);
+
+  const [liveMetrics, setLiveMetrics] = useState({
+    cpu: device.cpuUsagePercent || 0,
+    memory: device.memoryUsagePercent || 0,
+    storage: device.storageUsagePercent || 0,
+    latency: device.latencyMs || 0,
+    packetLoss: device.packetLossPercent || 0
+  });
+
+  useEffect(() => {
+    // EventSource doesn't use axios.defaults.baseURL, so we must explicitly point it to the backend!
+    const backendUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+    const eventSource = new EventSource(`${backendUrl}/api/v1/query/stream/${device.id}`);
+    
+    eventSource.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      setLiveMetrics({
+        cpu: data.cpu_usage_percent,
+        memory: data.memory_usage_percent,
+        storage: data.storage_usage_percent,
+        latency: data.latency_ms ?? 0,
+        packetLoss: data.packet_loss ?? 0
+      });
+    };
+    
+    return () => {
+      eventSource.close();
+    };
+  }, [device.id]);
 
   const handleForceDiscovery = async () => {
     setIsDiscovering(true);
@@ -155,11 +189,8 @@ export const DeviceDetails: React.FC<DeviceDetailsProps> = ({ device, onBack, on
 
   const handleRunDiagnostic = async (protocol: string) => {
     setRunningDiagnostic(protocol);
-    setPingLog((prev) => [...prev, `Initiating manual ${protocol.toUpperCase()} diagnostic probe...`]);
     try {
-      // route 'icmp' to 'ping' for backward compat, else use protocol directly
-      const endpoint = protocol === 'icmp' ? 'ping' : protocol;
-      await axios.post(`/api/devices/${device.id}/${endpoint}`);
+      await axios.post(`/api/v1/metadata/devices/${device.id}/diagnose`, { protocol });
       await fetchLogs();
       if (onRefresh) onRefresh();
     } catch (err) {
@@ -300,7 +331,15 @@ export const DeviceDetails: React.FC<DeviceDetailsProps> = ({ device, onBack, on
             </div>
           </div>
           <div>
-            <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase' }}>Monitoring Protocol</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase' }}>Monitoring Protocol</div>
+              <button 
+                onClick={() => setIsEditProtocolsOpen(true)}
+                style={{ background: 'transparent', border: '1px solid #334155', borderRadius: '4px', color: '#94a3b8', fontSize: '0.65rem', padding: '2px 6px', cursor: 'pointer' }}
+              >
+                Edit
+              </button>
+            </div>
             <div style={{ fontSize: '0.95rem', fontWeight: 600, color: '#38bdf8', marginTop: '4px', textTransform: 'uppercase' }}>
               {device.monitoring ? (
                 <>
@@ -319,35 +358,31 @@ export const DeviceDetails: React.FC<DeviceDetailsProps> = ({ device, onBack, on
           </div>
         </div>
       </div>
+      
+      <EditProtocolsModal 
+        isOpen={isEditProtocolsOpen} 
+        onClose={() => setIsEditProtocolsOpen(false)} 
+        device={device} 
+        onUpdate={() => { if (onRefresh) onRefresh(); }}
+      />
 
       {/* Connection Health Widgets */}
-      <div
-        style={{
-          background: '#0f172a',
-          borderRadius: '16px',
-          border: '1px solid #1e293b',
-          padding: '24px',
-          display: 'flex',
-          justifyContent: 'space-around',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '24px'
-        }}
-      >
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
         <GaugeWidget 
           value={device.availability24hPercent ?? 100} 
           label="24h Availability" 
           color={(device.availability24hPercent ?? 100) < 90 ? '#ef4444' : ((device.availability24hPercent ?? 100) < 99 ? '#f59e0b' : '#4ade80')} 
         />
         <GaugeWidget 
-          value={device.packetLossPercent} 
-          label="Packet Loss" 
-          color={device.packetLossPercent === 0 ? '#4ade80' : (device.packetLossPercent > 50 ? '#ef4444' : '#f59e0b')} 
+          value={liveMetrics.packetLoss} 
+          label="Live Packet Loss" 
+          color={liveMetrics.packetLoss === 0 ? '#4ade80' : (liveMetrics.packetLoss > 50 ? '#ef4444' : '#f59e0b')} 
         />
-        <ValueWidget 
-          value={device.latencyMs.toString().padStart(3, '0')} 
-          label="Response Time" 
+        <LatencyWidget 
+          value={liveMetrics.latency} 
+          label="Live Response Time" 
           unit="ms" 
+          color={liveMetrics.latency < 50 ? '#4ade80' : (liveMetrics.latency < 150 ? '#f59e0b' : '#ef4444')}
         />
       </div>
 
@@ -364,8 +399,28 @@ export const DeviceDetails: React.FC<DeviceDetailsProps> = ({ device, onBack, on
             {device.snmp_data?.CPU?.Cores ? (
               <CpuCoresGraph cores={device.snmp_data.CPU.Cores} />
             ) : (
-              <div style={{ height: '8px', background: '#1e293b', borderRadius: '999px', overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${device.cpuUsagePercent}%`, background: '#38bdf8', borderRadius: '999px', transition: 'width 0.5s ease' }} />
+              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', minHeight: '120px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '16px' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc' }}>Total CPU Usage</h3>
+                  <div style={{ fontSize: '2rem', fontWeight: 700, color: '#38bdf8', lineHeight: 1 }}>
+                    {liveMetrics.cpu.toFixed(1)}<span style={{ fontSize: '1.2rem', color: '#94a3b8', marginLeft: '2px' }}>%</span>
+                  </div>
+                </div>
+                <div style={{ height: '12px', background: '#1e293b', borderRadius: '999px', overflow: 'hidden', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.5)' }}>
+                  <div style={{ 
+                    height: '100%', 
+                    width: `${liveMetrics.cpu}%`, 
+                    background: 'linear-gradient(90deg, #0284c7, #38bdf8)', 
+                    borderRadius: '999px', 
+                    transition: 'width 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
+                    boxShadow: '0 0 10px rgba(56, 189, 248, 0.5)' 
+                  }} />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px', fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>
+                  <span>0%</span>
+                  <span style={{ color: '#38bdf8', opacity: 0.8, letterSpacing: '0.05em' }}>● LIVE STREAM</span>
+                  <span>100%</span>
+                </div>
               </div>
             )}
           </div>
@@ -373,12 +428,12 @@ export const DeviceDetails: React.FC<DeviceDetailsProps> = ({ device, onBack, on
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             {/* RAM Card */}
             <div style={{ background: '#0f172a', borderRadius: '16px', border: '1px solid #1e293b', padding: '24px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                <DonutChart value={device.memoryUsagePercent} label="System RAM" color="#10b981" />
+                <DonutChart value={liveMetrics.memory} label="System RAM" color="#10b981" />
             </div>
 
             {/* Storage Card */}
             <div style={{ background: '#0f172a', borderRadius: '16px', border: '1px solid #1e293b', padding: '24px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                <DonutChart value={device.storageUsagePercent ?? 0} label="Disk Storage" color="#ef4444" />
+                <DonutChart value={liveMetrics.storage} label="Disk Storage" color="#ef4444" />
             </div>
           </div>
 

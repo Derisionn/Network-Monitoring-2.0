@@ -30,6 +30,7 @@ class DeviceCreate(BaseModel):
     hardware_model: Optional[str] = None
     location: Optional[str] = None
     protocol_config: Optional[Dict[str, Any]] = None
+    supported_protocols: Optional[List[str]] = None
 
 class DeviceResponse(DeviceCreate):
     id: str
@@ -49,6 +50,7 @@ class DeviceUpdate(BaseModel):
     location: Optional[str] = None
     mac_address: Optional[str] = None
     discovered_methods: Optional[List[str]] = None
+    protocol_config: Optional[Dict[str, Any]] = None
 
 class ProbeScanRequest(BaseModel):
     subnet: str
@@ -56,3 +58,6 @@ class ProbeScanRequest(BaseModel):
 class ProbeScanResultPayload(BaseModel):
     probe_id: str
     results: list[Dict[str, Any]]
+
+class ProbeMigrateRequest(BaseModel):
+    target_probe_id: str

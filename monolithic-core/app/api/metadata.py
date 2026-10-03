@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
 from app.config.metadata_db import get_metadata_db
-from app.schemas.metadata import DeviceCreate, DeviceResponse, DeviceUpdate, ProbeResponse, ProbeCreate, ProbeScanRequest, ProbeScanResultPayload
+from app.schemas.metadata import DeviceCreate, DeviceResponse, DeviceUpdate, ProbeResponse, ProbeCreate, ProbeScanRequest, ProbeScanResultPayload, ProbeMigrateRequest
 
 from typing import List
 import hashlib
@@ -10,7 +10,7 @@ import logging
 
 # Import our new database service
 from app.database import postgresdata
-from app.services import agent_service
+from app.services import agent_service, diagnostic_service
 import io
 import os
 import zipfile
@@ -18,6 +18,11 @@ from fastapi import Response, HTTPException
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+@router.get("/debug-devices")
+def debug_devices(db: Session = Depends(get_metadata_db)):
+    devices = db.query(Device).all()
+    return [{"id": d.id, "ip": d.ip_address, "mac": d.mac_address, "is_deleted": d.is_deleted, "name": d.name} for d in devices]
 
 # --- DEVICE APIS ---
 
@@ -56,6 +61,28 @@ def force_discovery(device_id: str, db: Session = Depends(get_metadata_db)):
     """
     return postgresdata.force_device_discovery(db, device_id)
 
+from pydantic import BaseModel
+class DiagnoseRequest(BaseModel):
+    protocol: str
+
+@router.post("/devices/{device_id}/diagnose")
+def trigger_diagnose(device_id: str, req: DiagnoseRequest, db: Session = Depends(get_metadata_db)):
+    """
+    Triggers a manual diagnostic probe for a specific device.
+    """
+    # Verify device exists
+    postgresdata.get_device(db, device_id)
+    diagnostic_service.request_diagnostic(device_id, req.protocol)
+    return {"status": "queued"}
+
+@router.get("/devices/{device_id}/diagnostic-logs")
+def get_diagnostic_logs(device_id: str):
+    """
+    Polls for the latest diagnostic logs.
+    """
+    logs = diagnostic_service.get_logs(device_id)
+    return {"logs": logs}
+
 # --- PROBE APIS ---
 
 @router.post("/probes", response_model=ProbeResponse)
@@ -71,6 +98,13 @@ def delete_probe(probe_id: str, db: Session = Depends(get_metadata_db)):
     Deletes a registered probe agent.
     """
     return postgresdata.delete_probe(db, probe_id)
+
+@router.post("/probes/{probe_id}/migrate")
+def migrate_devices(probe_id: str, request: ProbeMigrateRequest, db: Session = Depends(get_metadata_db)):
+    """
+    Migrates all devices from one probe to another.
+    """
+    return postgresdata.migrate_devices_to_probe(db, probe_id, request.target_probe_id)
 
 @router.get("/probes", response_model=list[ProbeResponse])
 def get_all_probes(db: Session = Depends(get_metadata_db)):
@@ -109,6 +143,24 @@ def submit_probe_scan_results(payload: ProbeScanResultPayload, db: Session = Dep
     """
     return postgresdata.submit_probe_scan_results(db, payload.probe_id, payload.results)
 
+class DiagnosticLogPayload(BaseModel):
+    device_id: str
+    message: str
+
+@router.post("/probe/diagnostic-logs")
+def submit_diagnostic_logs(payload: DiagnosticLogPayload):
+    """
+    Endpoint for a probe to submit a diagnostic log line.
+    """
+    diagnostic_service.append_log(payload.device_id, payload.message)
+    return {"status": "ok"}
+
+@router.post("/probe/diagnostic-complete")
+def submit_diagnostic_complete(payload: DiagnosticLogPayload):
+    diagnostic_service.append_log(payload.device_id, payload.message)
+    diagnostic_service.clear_diagnostic(payload.device_id)
+    return {"status": "ok"}
+
 @router.get("/probes/{probe_id}", response_model=ProbeResponse)
 def get_probe(probe_id: str, db: Session = Depends(get_metadata_db)):
     """
@@ -142,8 +194,8 @@ def get_probe_config(
     
     tasks = []
     for d in devices:
-        # Default to ICMP and SNMP if not configured, or pull from protocol_config
-        methods = ["icmp", "snmp"]
+        # No more guessing. Strictly use the user's explicit protocol configuration.
+        methods = []
         if d.protocol_config and "methods" in d.protocol_config:
             methods = d.protocol_config["methods"]
             
@@ -158,16 +210,25 @@ def get_probe_config(
         if getattr(d, 'pending_discovery', False):
             task_dict["force_discovery"] = True
             
+        pending_diag = diagnostic_service.get_pending_diagnostic(d.id)
+        if pending_diag:
+            task_dict["pending_diagnostic"] = pending_diag["protocol"]
+            diagnostic_service.mark_diagnostic_running(d.id)
+            
         tasks.append(task_dict)
         
-    # Create a hash of the current task list to act as a version
-    config_str = json.dumps(tasks, sort_keys=True)
+    # Create a hash of the current task list AND the pending scan subnet to act as a version
+    hash_data = {
+        "tasks": tasks,
+        "pending_scan_subnet": probe.pending_scan_subnet
+    }
+    config_str = json.dumps(hash_data, sort_keys=True)
     new_version = hashlib.md5(config_str.encode()).hexdigest()
     
-    # Bandwidth saver temporarily disabled:
-    # if new_version == current_version:
-    #     from fastapi import Response
-    #     return Response(status_code=304)
+    # Bandwidth saver re-enabled!
+    if new_version == current_version:
+        from fastapi import Response
+        return Response(status_code=304)
     
     return {
         "config_version": new_version,

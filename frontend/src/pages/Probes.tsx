@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { DeployProbeModal } from '../components/probes/DeployProbeModal';
+import { MigrateProbeModal } from '../components/probes/MigrateProbeModal';
 
 interface Probe {
   id: string;
@@ -14,6 +15,7 @@ export const Probes: React.FC = () => {
   const navigate = useNavigate();
   const [probes, setProbes] = useState<Probe[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [migrateModalProbeId, setMigrateModalProbeId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchProbes = async () => {
@@ -46,7 +48,11 @@ export const Probes: React.FC = () => {
       await axios.delete(`/api/v1/metadata/probes/${probeId}`);
       fetchProbes();
     } catch (error: any) {
-      alert(error.response?.data?.detail || 'Failed to delete probe.');
+      if (error.response?.status === 400 && error.response?.data?.detail?.includes('assigned devices')) {
+        alert('This agent still has devices assigned to it. Please use the "Migrate" button to move them to another agent first.');
+      } else {
+        alert(error.response?.data?.detail || 'Failed to delete probe.');
+      }
     }
   };
 
@@ -147,6 +153,18 @@ export const Probes: React.FC = () => {
                     >
                       Delete
                     </button>
+                    <button
+                      onClick={() => setMigrateModalProbeId(probe.id)}
+                      style={{
+                        background: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.2)',
+                        padding: '6px 12px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer',
+                        transition: 'all 0.2s', marginLeft: '8px'
+                      }}
+                      onMouseOver={(e) => (e.currentTarget.style.background = 'rgba(56, 189, 248, 0.2)')}
+                      onMouseOut={(e) => (e.currentTarget.style.background = 'rgba(56, 189, 248, 0.1)')}
+                    >
+                      Migrate
+                    </button>
                   </td>
                 </tr>
               );
@@ -160,6 +178,14 @@ export const Probes: React.FC = () => {
         onClose={() => setIsModalOpen(false)} 
         onProbeCreated={fetchProbes}
       />
+      {migrateModalProbeId && (
+        <MigrateProbeModal
+          isOpen={!!migrateModalProbeId}
+          onClose={() => setMigrateModalProbeId(null)}
+          sourceProbeId={migrateModalProbeId}
+          onMigrated={fetchProbes}
+        />
+      )}
     </div>
   );
 };

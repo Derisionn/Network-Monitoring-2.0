@@ -34,7 +34,7 @@ def init_cassandra():
             'secure_connect_bundle': settings.CASSANDRA_SECURE_BUNDLE_PATH
         }
         auth_provider = PlainTextAuthProvider(settings.CASSANDRA_CLIENT_ID, settings.CASSANDRA_CLIENT_SECRET)
-        cluster = Cluster(cloud=cloud_config, auth_provider=auth_provider)
+        cluster = Cluster(cloud=cloud_config, auth_provider=auth_provider, protocol_version=4)
         session = cluster.connect()
         
         # Astra DB requires us to use the keyspace we created in the cloud

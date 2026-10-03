@@ -58,4 +58,5 @@ export interface NetworkDevice {
   monitoring?: MonitoringConfig;
   snmp_data?: any;
   throughput_history?: { time: string; value: number }[];
+  supported_protocols?: string[];
 }

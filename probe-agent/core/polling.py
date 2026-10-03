@@ -7,6 +7,7 @@ from typing import Dict, Any
 from core.discovery import run_discovery
 from core.subnet_sweep import run_subnet_sweep
 import core.state
+from core.diagnostics import run_diagnostic
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,10 @@ def long_polling_loop(config: Dict[str, Any]):
                             if is_new or force_discovery:
                                 core.state.DISCOVERED_DEVICES_CACHE.add(device_id)
                                 threading.Thread(target=run_discovery, args=(task, config), daemon=True).start()
+                                
+                            pending_diag = task.get("pending_diagnostic")
+                            if pending_diag:
+                                threading.Thread(target=run_diagnostic, args=(task, config), daemon=True).start()
                             
             elif resp.status_code == 304:
                 time.sleep(30)

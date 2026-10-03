@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { NetworkDevice } from '../types/device';
 import { AddDeviceModal } from '../components/dashboard/AddDeviceModal';
+import { BulkAddDeviceModal } from '../components/dashboard/BulkAddDeviceModal';
+import { MonitoringConfig } from '../types/device';
 
 interface Probe {
   id: string;
@@ -24,6 +26,7 @@ export const ProbeDetails: React.FC = () => {
   
   const [showScanModal, setShowScanModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showBulkAddModal, setShowBulkAddModal] = useState(false);
   const [scanSubnet, setScanSubnet] = useState('192.168.1.0/24');
   const [selectedResults, setSelectedResults] = useState<Set<string>>(new Set());
 
@@ -72,15 +75,18 @@ export const ProbeDetails: React.FC = () => {
     }
   };
 
-  const fetchDetails = async () => {
+  const fetchProbe = async () => {
     try {
-      const [probeRes, devicesRes] = await Promise.all([
-        axios.get(`/api/v1/metadata/probes/${probeId}`),
-        axios.get(`/api/v1/metadata/probes/${probeId}/devices`)
-      ]);
+      const probeRes = await axios.get(`/api/v1/metadata/probes/${probeId}`);
       setProbe(probeRes.data);
-      
-      // Map backend devices to frontend interface
+    } catch (err) {
+      console.error('Error fetching probe details:', err);
+    }
+  };
+
+  const fetchDevices = async () => {
+    try {
+      const devicesRes = await axios.get(`/api/v1/metadata/probes/${probeId}/devices`);
       const mappedDevices = devicesRes.data.map((d: any) => ({
         id: d.id,
         name: d.name,
@@ -92,21 +98,30 @@ export const ProbeDetails: React.FC = () => {
       }));
       setDevices(mappedDevices);
     } catch (err) {
-      console.error('Error fetching probe details:', err);
-    } finally {
-      setIsLoading(false);
+      console.error('Error fetching devices details:', err);
     }
   };
 
+  const fetchDetails = async () => {
+    await Promise.all([fetchProbe(), fetchDevices()]);
+    setIsLoading(false);
+  };
+
   useEffect(() => {
+    setIsLoading(true);
     fetchDetails();
-    const interval = setInterval(fetchDetails, 5000); // Polling every 5s for faster scan feedback
+    
+    // Poll ONLY the probe every 5 seconds (for faster scan feedback)
+    const probeInterval = setInterval(fetchProbe, 5000);
+    // Poll the devices much slower (every 60 seconds)
+    const devicesInterval = setInterval(fetchDevices, 60000);
     
     const handleSync = () => fetchDetails();
     window.addEventListener('manual-sync', handleSync);
     
     return () => {
-      clearInterval(interval);
+      clearInterval(probeInterval);
+      clearInterval(devicesInterval);
       window.removeEventListener('manual-sync', handleSync);
     };
   }, [probeId]);
@@ -116,12 +131,13 @@ export const ProbeDetails: React.FC = () => {
       await axios.post(`/api/v1/metadata/probes/${probeId}/scan`, { subnet: scanSubnet });
       setShowScanModal(false);
       fetchDetails();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      alert(`Failed to start scan: ${err.response?.data?.detail || err.message}`);
     }
   };
 
-  const handleAddSelected = async () => {
+  const handleBulkAddConfirm = async (config: MonitoringConfig) => {
     if (!probe?.last_scan_results) return;
     try {
       const promises = probe.last_scan_results
@@ -132,13 +148,27 @@ export const ProbeDetails: React.FC = () => {
             ip_address: r.ip,
             probe_id: probeId,
             hardware_category: r.type,
-            mac_address: r.mac
+            mac_address: r.mac,
+            protocol_config: {
+              methods: config.methods,
+              interval_seconds: config.intervalSeconds,
+              snmp_version: config.snmpVersion,
+              community_string: config.communityString,
+              snmp_port: config.snmpPort,
+              http_url: config.httpUrl,
+              tcp_target_port: config.tcpPort,
+              ssh_username: config.sshUsername,
+              ssh_password: config.sshPassword,
+              ssh_port: config.sshPort,
+              wmi_username: config.wmiUsername,
+              wmi_password: config.wmiPassword,
+            }
           })
         );
       await Promise.all(promises);
       setSelectedResults(new Set());
+      setShowBulkAddModal(false);
       fetchDetails();
-      alert('Devices added successfully!');
     } catch (err) {
       console.error(err);
       alert('Error adding devices.');
@@ -160,7 +190,7 @@ export const ProbeDetails: React.FC = () => {
     const now = new Date().getTime();
     const diffSeconds = (now - lastTime) / 1000;
     
-    if (diffSeconds > 120) {
+    if (diffSeconds > 30) {
       return { text: 'Offline', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.1)' };
     }
     return { text: 'Online', color: '#22c55e', bg: 'rgba(34, 197, 94, 0.1)' };
@@ -245,7 +275,7 @@ export const ProbeDetails: React.FC = () => {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <h4 style={{ margin: 0, color: '#f8fafc' }}>Scan Results (Found {probe.last_scan_results.length})</h4>
             {selectedResults.size > 0 && (
-              <button onClick={handleAddSelected} style={{ padding: '8px 16px', background: '#22c55e', border: 'none', color: 'white', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}>
+              <button onClick={() => setShowBulkAddModal(true)} style={{ padding: '8px 16px', background: '#22c55e', border: 'none', color: 'white', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}>
                 Add {selectedResults.size} Selected Devices
               </button>
             )}
@@ -374,6 +404,13 @@ export const ProbeDetails: React.FC = () => {
         onClose={() => setShowAddModal(false)} 
         onAddDevice={handleManualAdd} 
         prefilledProbeId={probeId} 
+      />
+
+      <BulkAddDeviceModal
+        isOpen={showBulkAddModal}
+        onClose={() => setShowBulkAddModal(false)}
+        selectedCount={selectedResults.size}
+        onConfirm={handleBulkAddConfirm}
       />
     </div>
   );

@@ -6,14 +6,41 @@ import datetime
 
 def create_device(db: Session, device: DeviceCreate) -> Device:
     # Check if a non-deleted device with this IP already exists
-    db_device = db.query(Device).filter(
+    active_device = db.query(Device).filter(
         Device.ip_address == device.ip_address,
         Device.is_deleted == False
     ).first()
     
-    if db_device:
+    if active_device:
         raise HTTPException(status_code=400, detail="An active device with this IP already exists.")
         
+    # Reactivation Logic during Creation!
+    if device.mac_address:
+        old_device = db.query(Device).filter(
+            Device.ip_address == device.ip_address,
+            Device.mac_address == device.mac_address,
+            Device.is_deleted == True
+        ).first()
+        
+        if old_device:
+            # Reactivate the old device
+            old_device.is_deleted = False
+            old_device.name = device.name
+            old_device.probe_id = device.probe_id
+            old_device.hardware_category = device.hardware_category
+            if device.hardware_model: old_device.hardware_model = device.hardware_model
+            if device.location: old_device.location = device.location
+            if device.protocol_config: old_device.protocol_config = device.protocol_config
+            if device.supported_protocols: old_device.supported_protocols = device.supported_protocols
+            
+            # Force a deep discovery scan to populate missing SNMP/WMI details!
+            old_device.pending_discovery = True
+            
+            db.commit()
+            db.refresh(old_device)
+            return old_device
+
+    # If no MAC match or no MAC provided, create a brand new device
     new_device = Device(
         name=device.name,
         ip_address=device.ip_address,
@@ -22,7 +49,9 @@ def create_device(db: Session, device: DeviceCreate) -> Device:
         mac_address=device.mac_address,
         hardware_model=device.hardware_model,
         location=device.location,
-        protocol_config=device.protocol_config
+        protocol_config=device.protocol_config,
+        supported_protocols=device.supported_protocols,
+        pending_discovery=True # Force a deep discovery scan for new devices!
     )
     
     db.add(new_device)
@@ -38,20 +67,54 @@ def update_device_metadata(db: Session, device_id: str, updates: DeviceUpdate) -
     if not db_device:
         raise HTTPException(status_code=404, detail="Device not found")
         
+    # Reactivation Logic: Check if we just discovered a MAC address that matches an old soft-deleted device
+    if updates.mac_address and not db_device.mac_address:
+        old_device = db.query(Device).filter(
+            Device.ip_address == db_device.ip_address,
+            Device.mac_address == updates.mac_address,
+            Device.is_deleted == True
+        ).first()
+        
+        if old_device:
+            # Found the old device! Reactivate it.
+            old_device.is_deleted = False
+            
+            # Copy over the new metadata to the old device
+            if updates.os_description is not None: old_device.os_description = updates.os_description
+            if updates.system_hostname is not None: old_device.system_hostname = updates.system_hostname
+            if updates.location is not None: old_device.location = updates.location
+            old_device.mac_address = updates.mac_address
+            
+            if updates.discovered_methods is not None:
+                existing = old_device.supported_protocols or []
+                old_device.supported_protocols = list(set(existing + updates.discovered_methods))
+                
+            if updates.protocol_config is not None:
+                old_device.protocol_config = updates.protocol_config
+                
+            old_device.pending_discovery = False
+            
+            # Delete the temporary new device we had created
+            db.delete(db_device)
+            db.commit()
+            db.refresh(old_device)
+            return old_device
+
+    # Standard update for db_device if no merge happened
     if updates.os_description is not None: db_device.os_description = updates.os_description
     if updates.system_hostname is not None: db_device.system_hostname = updates.system_hostname
     if updates.location is not None: db_device.location = updates.location
     if updates.mac_address is not None: db_device.mac_address = updates.mac_address
     
     if updates.discovered_methods is not None:
-        # Merge the auto-discovered methods into the protocol_config JSON
-        if db_device.protocol_config is None:
-            db_device.protocol_config = {}
-        
-        existing_methods = db_device.protocol_config.get("methods", [])
+        # Save auto-discovered methods into supported_protocols (historical record)
+        existing_supported = db_device.supported_protocols or []
         # Combine existing and new, keeping unique
-        merged_methods = list(set(existing_methods + updates.discovered_methods))
-        db_device.protocol_config["methods"] = merged_methods
+        merged_supported = list(set(existing_supported + updates.discovered_methods))
+        db_device.supported_protocols = merged_supported
+        
+    if updates.protocol_config is not None:
+        db_device.protocol_config = updates.protocol_config
     
     # Automatically clear the sticky note once metadata is updated!
     db_device.pending_discovery = False
@@ -74,7 +137,7 @@ def delete_device(db: Session, device_id: str):
     if not db_device:
         raise HTTPException(status_code=404, detail="Device not found")
         
-    db.delete(db_device)
+    db_device.is_deleted = True
     db.commit()
     return {"message": "Device deleted successfully"}
 
@@ -121,6 +184,22 @@ def delete_probe(db: Session, probe_id: str):
     db.delete(probe)
     db.commit()
     return {"message": "Probe deleted successfully"}
+
+def migrate_devices_to_probe(db: Session, old_probe_id: str, new_probe_id: str):
+    # Verify new probe exists
+    new_probe = db.query(Probe).filter(Probe.id == new_probe_id).first()
+    if not new_probe:
+        raise HTTPException(status_code=404, detail="Target probe not found.")
+        
+    # Update all devices from old to new
+    devices = db.query(Device).filter(Device.probe_id == old_probe_id).all()
+    count = len(devices)
+    
+    for device in devices:
+        device.probe_id = new_probe_id
+        
+    db.commit()
+    return {"message": f"Successfully migrated {count} devices", "migrated_count": count}
 
 def update_probe_heartbeat(db: Session, probe_id: str) -> Probe:
     probe = db.query(Probe).filter(Probe.id == probe_id).first()
